@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
+import { ConnectionsTab } from './ConnectionsTab'
 import type { ProviderStatus, Settings, UpdateState, VoiceProgress, VoiceStatus } from '@shared/types'
 
 const api = window.jarvis
 
-type Tab = 'general' | 'memory' | 'voice' | 'tools' | 'shortcuts' | 'app'
+type Tab = 'general' | 'memory' | 'voice' | 'tools' | 'connections' | 'shortcuts' | 'app'
 
 const MODELS: { id: string; label: string }[] = [
   { id: 'tiny.en', label: 'tiny.en · 75 MB · fastest, English' },
@@ -404,7 +405,7 @@ export function SettingsPanel({
         <div className="panel-head">
           <h2>Settings</h2>
           <div className="tabs">
-            {(['general', 'memory', 'voice', 'tools', 'shortcuts', 'app'] as Tab[]).map((t) => (
+            {(['general', 'memory', 'voice', 'tools', 'connections', 'shortcuts', 'app'] as Tab[]).map((t) => (
               <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
                 {t}
               </button>
@@ -535,6 +536,8 @@ export function SettingsPanel({
           {tab === 'voice' && <VoiceTab s={s} setS={setS} />}
 
           {tab === 'tools' && <ToolsTab s={s} setS={setS} />}
+
+          {tab === 'connections' && <ConnectionsTab />}
 
           {tab === 'shortcuts' && (
             <>

@@ -59,8 +59,34 @@ Every Claude Code / Codex run gets a built-in `jarvis` MCP server (`src/main/mcp
 | `memory_search`, `remember` | Read and write your long-term memory |
 | `linear_my_issues`, `linear_get_issue` | Read Linear issues (allowed without a prompt) |
 | `linear_set_state`, `linear_comment` | Update Linear issues (asks first in Edit mode) |
+| `connections_list`, `connect_service` | See connected services; set up a new one with you (popup, sign-in or key entry; see Connections) |
 
 Codex gets the memory and Linear tools through `-c mcp_servers.jarvis.*`. `codex exec` can't stop to ask for approval, so its safety comes from its sandbox.
+
+## Connections (your tools, with your access)
+
+Settings → **Connections** gives Jarvis's agents lasting access to the services you use. Agents can also set one up with you mid-chat with the `connect_service` tool: you get a popup, then sign in or enter a key.
+
+| Kind | For | How |
+|---|---|---|
+| **OAuth** | MCP servers behind OAuth 2.1 (your own apps on your auth server, Linear, Notion…) | Jarvis reads the server's metadata (RFC 9728 / 8414), registers itself as the client "Jarvis" (dynamic registration), and opens your browser to sign in with PKCE. A one-shot listener on `127.0.0.1` catches the redirect. The token is bound to that server (`resource`) and refreshed with `offline_access`. |
+| **API key** | MCP servers that take a bearer token or a custom header | You paste the key once, in Settings or in the agent's connect popup. It never goes into the chat. |
+| **No auth** | open MCP servers | — |
+| **Website login** | sites without an API | Opens the site in Jarvis's own browser profile. You log in once, and the agents' `browser` tool stays logged in. |
+
+Example: add `https://jobs.damonbasler.de/mcp`. Jarvis finds `auth.damonbasler.de` and you approve "Jarvis" there. From then on, agents get the Shortlist tools as `mcp__shortlist__*`, acting as your account. To revoke access, remove the connection here or revoke the client on your auth server.
+
+**Where secrets live.** `connections.json` stores only names, URLs and policies. Tokens, refresh tokens, client registrations and keys are stored in the vault (`secrets.json`, encrypted with the macOS keychain via `safeStorage`). Agents never receive credentials. Each connection is a stdio instance of the Jarvis bridge (`JARVIS_PROXY=<id>`) that forwards calls to the main process. The main process holds the MCP session, adds the token, refreshes it when needed and passes the server's instructions through. No token appears in CLI arguments, in environment variables or in the agent's context.
+
+**Policy** (per connection, enforced in the main process for Claude and Codex alike):
+
+- *Read only*: agents see only tools the server marks `readOnlyHint`.
+- *Ask before changes* (default): every other tool call opens an approval popup. Unattended routines can't make changes.
+- *Act on its own*: other tools run without asking.
+
+"Ask" (read-only) chats always get only the read-only tools. Every call is logged to `connections-audit.jsonl`; Settings → Connections → *Recent agent activity* shows the log.
+
+Tests: `npx tsx scripts/connections-test.mts --live` covers OAuth against a mock server, plus discovery against Shortlist. `pnpm build && node scripts/connections-e2e.mts` runs the whole proxy path in Electron: vault, refresh, policies, approvals and audit.
 
 ## Memory & knowledge
 

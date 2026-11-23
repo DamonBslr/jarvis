@@ -2,7 +2,10 @@ import { createServer, type IncomingMessage } from 'node:http'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { join, sep } from 'node:path'
 import type { AddressInfo } from 'node:net'
+import { shell } from 'electron'
 import type { ApprovalDecision, ApprovalRequest, Settings } from '@shared/types'
+import { agentConnect, agentListConnections, proxyCall, proxyInit, proxyList } from '../connections'
+import { loadShellEnv } from '../shellEnv'
 import { embed } from '../memory/embed'
 import { addMemory, searchMemories } from '../memory/memories'
 import { searchChunks } from '../memory/knowledge'
@@ -47,18 +50,29 @@ async function linearKey(): Promise<string> {
 }
 
 /** Show an approval popup in the run's window and wait for the answer. */
-function askUser(deps: BridgeDeps, runId: string, toolName: string, input: unknown): Promise<ApprovalDecision> {
+function askUser(
+  deps: BridgeDeps,
+  runId: string,
+  toolName: string,
+  input: unknown,
+  connect?: ApprovalRequest['connect']
+): Promise<ApprovalDecision> {
   const requestId = randomUUID()
   return new Promise<ApprovalDecision>((resolve) => {
     // Unanswered prompts deny after 10 minutes so the CLI never hangs forever.
     const timer = setTimeout(() => respondApproval(requestId, { behavior: 'deny', message: 'No answer from user' }), 600_000)
     pending.set(requestId, { resolve, timer })
-    deps.requestApproval({ requestId, runId, toolName, input })
+    deps.requestApproval({ requestId, runId, toolName, input, ...(connect ? { connect } : {}) })
   })
 }
 
-const isMcpContent = (v: unknown): v is McpContentResult =>
+const isMcpContent = (v: unknown): v is McpContentResult & { isError?: boolean } =>
   typeof v === 'object' && v !== null && Array.isArray((v as McpContentResult).mcpContent)
+
+const openInBrowser = async (url: string) => {
+  if (!/^https?:\/\//.test(url)) throw new Error('refusing to open a non-http URL')
+  await shell.openExternal(url)
+}
 
 async function handleTool(name: string, args: any, runId: string, deps: BridgeDeps): Promise<unknown> {
   const settings = await deps.settings()
@@ -101,6 +115,15 @@ async function handleTool(name: string, args: any, runId: string, deps: BridgeDe
     }
     case 'linear_comment':
       return linear.comment(await linearKey(), String(args.id), String(args.body))
+    case 'connections_list':
+      return agentListConnections()
+    case 'connect_service':
+      return agentConnect(args, {
+        runId,
+        ask: (toolName, input, connect) => askUser(deps, runId, toolName, input, connect),
+        open: openInBrowser,
+        env: await loadShellEnv()
+      })
     default:
       throw new Error(`unknown tool ${name}`)
   }
@@ -110,8 +133,30 @@ export async function startBridge(deps: BridgeDeps) {
   const server = createServer(async (req, res) => {
     try {
       // Loopback + token: other local processes/websites can't drive Jarvis tools.
-      if (req.headers['x-jarvis-token'] !== token || req.method !== 'POST' || (req.url !== '/tool' && req.url !== '/tools')) {
+      if (req.headers['x-jarvis-token'] !== token || req.method !== 'POST' || !['/tool', '/tools', '/proxy'].includes(req.url ?? '')) {
         res.writeHead(403).end('forbidden')
+        return
+      }
+      if (req.url === '/proxy') {
+        // A connected remote MCP server, proxied with the credentials only this process holds.
+        const { runId, connection, op, name, args } = await readBody(req)
+        const run = String(runId ?? '')
+        const conn = String(connection ?? '')
+        if (op === 'init' || op === 'list') {
+          const body = op === 'init' ? await proxyInit(run, conn) : await proxyList(run, conn)
+          res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(body))
+          return
+        }
+        if (op !== 'call') throw new Error(`unknown proxy op ${op}`)
+        const args_ = args && typeof args === 'object' && !Array.isArray(args) ? args : {}
+        const result = await proxyCall(run, conn, String(name), args_, (toolName, input) => askUser(deps, run, toolName, input))
+        res
+          .writeHead(200, {
+            'content-type': 'application/json',
+            'x-jarvis-content': 'mcp',
+            ...(result.isError ? { 'x-jarvis-error': '1' } : {})
+          })
+          .end(JSON.stringify(result.mcpContent))
         return
       }
       if (req.url === '/tools') {
@@ -139,7 +184,7 @@ export async function startBridge(deps: BridgeDeps) {
 }
 
 /** How a CLI should launch the bridge for a given run. */
-export function bridgeLaunch(runId: string, groups: string[]) {
+export function bridgeLaunch(runId: string, groups: string[], proxy?: string) {
   return {
     command: process.execPath,
     // Packaged builds unpack bridge.js next to the asar (see electron-builder.yml asarUnpack).
@@ -149,7 +194,8 @@ export function bridgeLaunch(runId: string, groups: string[]) {
       JARVIS_BRIDGE_URL: baseUrl,
       JARVIS_BRIDGE_TOKEN: token,
       JARVIS_RUN_ID: runId,
-      JARVIS_TOOLS: groups.join(',')
+      JARVIS_TOOLS: groups.join(','),
+      ...(proxy ? { JARVIS_PROXY: proxy } : {})
     }
   }
 }

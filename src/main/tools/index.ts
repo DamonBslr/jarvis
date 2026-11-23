@@ -2,6 +2,7 @@ import type { McpServerSpec, RunRequest, Settings } from '@shared/types'
 import { browserTools } from './browser'
 import { computerTools } from './computer'
 import { t3Tools } from './t3'
+import { connectionTools } from '../connections'
 
 /** What one capability contributes to an agent run. */
 export interface ToolContribution {
@@ -25,7 +26,7 @@ export interface ToolContext {
 
 type Capability = (ctx: ToolContext) => Promise<ToolContribution | null> | ToolContribution | null
 
-const CAPABILITIES: Capability[] = [browserTools, computerTools, t3Tools]
+const CAPABILITIES: Capability[] = [browserTools, computerTools, t3Tools, connectionTools]
 
 /** Collect the extra MCP servers / allowed tools / hints for a run. Failing capabilities are skipped, not fatal. */
 export async function collectTools(ctx: ToolContext, log: (msg: string) => void) {

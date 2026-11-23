@@ -6,6 +6,10 @@
  *  - approve:   permission prompt for Claude Code (--permission-prompt-tool) -> popup in Jarvis
  *  - memory_*:  read/write the user's long-term memory
  *  - linear_*:  read/update Linear issues with the key stored in Jarvis
+ *  - connections: list the services the user connected, and set up a new one with the user (popup, sign-in)
+ *  - proxy mode (JARVIS_PROXY=<connection id>): this instance stands in for one remote MCP server the user
+ *               connected. tools/list and tools/call go to Jarvis, which adds the credentials (they never
+ *               reach this process or the agent), refreshes tokens and enforces the connection's policy.
  *  - computer:  screenshots + mouse/keyboard on the user's Mac. Its tool list comes from Jarvis
  *               (POST /tools) so it can depend on the run's policy, and so this file imports nothing
  *               from the app: shared modules would become a rollup chunk inside app.asar, which this
@@ -19,6 +23,7 @@ const URL_ = process.env.JARVIS_BRIDGE_URL!
 const TOKEN = process.env.JARVIS_BRIDGE_TOKEN!
 const RUN_ID = process.env.JARVIS_RUN_ID ?? ''
 const GROUPS = new Set((process.env.JARVIS_TOOLS ?? 'memory,linear').split(','))
+const PROXY = process.env.JARVIS_PROXY ?? ''
 
 type Tool = { name: string; group: string; description: string; inputSchema: object; annotations?: object }
 
@@ -79,6 +84,29 @@ const TOOLS: Tool[] = [
     }
   },
   {
+    name: 'connections_list',
+    group: 'connections',
+    description: 'List the services the user connected to Jarvis (MCP servers and browser logins), their status and policy.',
+    inputSchema: { type: 'object', properties: {} },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+  },
+  {
+    name: 'connect_service',
+    group: 'connections',
+    description:
+      "Set up lasting access to a service together with the user. For a service with an MCP endpoint, pass its MCP URL: Jarvis detects OAuth (the user's browser opens to sign in and approve) or asks the user for an API key in a secure dialog. For a website without an API, pass kind \"browser\" and the site URL: it opens in Jarvis's browser so the user can log in once. Credentials go into the macOS keychain vault; you never see them. New MCP tools are available from the user's next message.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: str('MCP endpoint URL (e.g. https://jobs.example.com/mcp), or the site URL for kind "browser"'),
+        name: str('Short display name, e.g. "Shortlist"'),
+        kind: { type: 'string', enum: ['mcp', 'browser'], description: 'mcp (default) or browser' },
+        reason: str('One sentence for the user: why you need this access')
+      },
+      required: ['url']
+    }
+  },
+  {
     name: 'linear_comment',
     group: 'linear',
     description: 'Post a markdown comment on a Linear issue.',
@@ -94,7 +122,23 @@ const TOOLS: Tool[] = [
 const REMOTE_GROUPS = ['computer'].filter((g) => GROUPS.has(g))
 let remoteTools: Promise<Tool[]> | null = null
 
+async function post(path: string, body: object): Promise<Response> {
+  return fetch(`${URL_}${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-jarvis-token': TOKEN },
+    body: JSON.stringify({ runId: RUN_ID, ...body })
+  })
+}
+
+async function proxyJson(op: 'init' | 'list'): Promise<any> {
+  const res = await post('/proxy', { connection: PROXY, op })
+  const text = await res.text()
+  if (!res.ok) throw new Error(text || `HTTP ${res.status}`)
+  return JSON.parse(text)
+}
+
 async function listTools(): Promise<Tool[]> {
+  if (PROXY) return ((await proxyJson('list')) as Omit<Tool, 'group'>[]).map((t) => ({ ...t, group: 'proxy' }))
   const local = TOOLS.filter((t) => GROUPS.has(t.group))
   if (!REMOTE_GROUPS.length) return local
   remoteTools ??= fetch(`${URL_}/tools`, {
@@ -116,16 +160,13 @@ async function listTools(): Promise<Tool[]> {
 /** Tool output: plain text, or raw MCP content blocks (e.g. screenshots) when Jarvis marks them. */
 type Content = { type: string; [k: string]: unknown }[]
 
-async function call(name: string, args: unknown): Promise<Content> {
-  const res = await fetch(`${URL_}/tool`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-jarvis-token': TOKEN },
-    body: JSON.stringify({ runId: RUN_ID, name, args })
-  })
+async function call(name: string, args: unknown): Promise<{ content: Content; isError?: boolean }> {
+  const res = PROXY ? await post('/proxy', { connection: PROXY, op: 'call', name, args }) : await post('/tool', { name, args })
   const text = await res.text()
   if (!res.ok) throw new Error(text || `HTTP ${res.status}`)
-  if (res.headers.get('x-jarvis-content') === 'mcp') return JSON.parse(text) as Content
-  return [{ type: 'text', text }]
+  const isError = res.headers.get('x-jarvis-error') === '1'
+  if (res.headers.get('x-jarvis-content') === 'mcp') return { content: JSON.parse(text) as Content, ...(isError ? { isError } : {}) }
+  return { content: [{ type: 'text', text }] }
 }
 
 function send(msg: object) {
@@ -145,16 +186,20 @@ rl.on('line', async (line) => {
 
   try {
     switch (method) {
-      case 'initialize':
+      case 'initialize': {
+        // Proxied servers keep their own instructions (how to use their tools); best effort.
+        const instructions = PROXY ? await proxyJson('init').then((r) => r?.instructions, () => undefined) : undefined
         return send({
           jsonrpc: '2.0',
           id,
           result: {
             protocolVersion: params?.protocolVersion ?? '2025-06-18',
             capabilities: { tools: {} },
-            serverInfo: { name: 'jarvis', version: '0.1.0' }
+            serverInfo: { name: PROXY || 'jarvis', version: '0.1.0' },
+            ...(typeof instructions === 'string' && instructions ? { instructions } : {})
           }
         })
+      }
       case 'ping':
         return send({ jsonrpc: '2.0', id, result: {} })
       case 'tools/list':
@@ -172,9 +217,9 @@ rl.on('line', async (line) => {
         })
       case 'tools/call': {
         const name = params?.name
-        if (!(await listTools()).some((t) => t.name === name)) throw new Error(`unknown tool ${name}`)
-        const content = await call(name, params?.arguments ?? {})
-        return send({ jsonrpc: '2.0', id, result: { content } })
+        // Proxied servers are checked in Jarvis (it knows the run's policy); local tools here.
+        if (!PROXY && !(await listTools()).some((t) => t.name === name)) throw new Error(`unknown tool ${name}`)
+        return send({ jsonrpc: '2.0', id, result: await call(name, params?.arguments ?? {}) })
       }
       default:
         return send({ jsonrpc: '2.0', id, error: { code: -32601, message: `method not found: ${method}` } })

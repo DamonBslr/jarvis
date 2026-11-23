@@ -11,6 +11,7 @@ import * as mem from './memory/memories'
 import * as kb from './memory/knowledge'
 import { startBridge } from './mcp/server'
 import { disconnectT3 } from './tools/t3'
+import * as connections from './connections'
 import * as git from './integrations/git'
 import * as linear from './integrations/linear'
 import { getSecret, setSecret } from './secrets'
@@ -331,6 +332,24 @@ function registerIpc() {
     setTimeout(() => broadcast('jarvis:routines-changed'), 50)
   })
 
+  // Connections: services agents use with your access (OAuth sign-in opens your browser).
+  const openSignIn = async (url: string) => {
+    if (!/^https?:\/\//.test(url)) throw new Error('refusing to open a non-http URL')
+    await shell.openExternal(url)
+  }
+  ipcMain.handle('connections:list', () => connections.connectionStatuses())
+  ipcMain.handle('connections:probe', (_e, url: string) => connections.probeConnection(String(url)))
+  ipcMain.handle('connections:add', (_e, input) => connections.addConnection(input, openSignIn))
+  ipcMain.handle('connections:update', (_e, id: string, patch) => connections.updateConnection(String(id), patch ?? {}))
+  ipcMain.handle('connections:reconnect', (_e, id: string, token?: string) =>
+    connections.reconnect(String(id), openSignIn, typeof token === 'string' ? token : undefined)
+  )
+  ipcMain.handle('connections:remove', (_e, id: string) => connections.removeConnection(String(id)))
+  ipcMain.handle('connections:openBrowser', async (_e, id: string) =>
+    connections.openConnectionBrowser(String(id), await loadShellEnv())
+  )
+  ipcMain.handle('connections:audit', (_e, limit?: number) => connections.readAudit(Math.min(Math.max(Number(limit) || 50, 1), 500)))
+
   // Updates
   ipcMain.handle('updates:state', () => updateState())
   ipcMain.handle('updates:check', () => checkForUpdates())
@@ -399,6 +418,7 @@ app.whenReady().then(async () => {
   void loadShellEnv() // warm up; first run spawns a login shell
   lockDownPermissions()
   await startBridge({ settings: () => store.getSettings(), requestApproval })
+  connections.onConnectionsChanged(() => broadcast('jarvis:connections-changed'))
   registerIpc()
 
   const settings = await store.getSettings()

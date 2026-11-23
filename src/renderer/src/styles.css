@@ -2003,3 +2003,196 @@ html.is-quick .approval-overlay {
 .template-list .ghost {
   border-color: var(--line);
 }
+
+/* ---------- Connections (Settings → Connections, connect dialog) ---------- */
+.health-dot.warn {
+  background: var(--warn);
+}
+.warn-inline {
+  color: var(--warn);
+}
+.conn-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.conn-title strong {
+  font-weight: 600;
+}
+.conn-kind {
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 7px;
+}
+.conn-id {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.conn-tools summary {
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.conn-tools div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.conn-tools code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+.conn-tools code.conn-write {
+  color: var(--warn);
+}
+.conn-actions,
+.conn-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.conn-actions button,
+.conn-inline button {
+  font-size: 12.5px;
+  padding: 5px 10px;
+}
+.conn-actions select,
+.conn-inline select,
+.conn-inline input {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 12.5px;
+  outline: none;
+}
+.conn-inline input {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-family: var(--mono);
+}
+.conn-inline input.conn-name {
+  flex: 0 1 180px;
+  font-family: inherit;
+}
+.conn-inline input:focus,
+.conn-actions select:focus,
+.conn-inline select:focus {
+  border-color: var(--accent);
+}
+button.danger {
+  background: none;
+  color: var(--err);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 8px;
+}
+.conn-add {
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.conn-add-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13.5px;
+}
+.conn-add-head .tabs button {
+  text-transform: none;
+}
+.conn-help {
+  color: var(--muted);
+  font-size: 12px;
+}
+.conn-error {
+  color: var(--err);
+  font-size: 12.5px;
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.06);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.conn-audit summary {
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+.conn-audit-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 2px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.conn-audit-row code {
+  font-family: var(--mono);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.conn-audit-row small {
+  grid-column: 1 / -1;
+  color: var(--faint);
+}
+.conn-audit-row.denied > span:last-of-type {
+  color: var(--warn);
+}
+.conn-audit-row.error > span:last-of-type {
+  color: var(--err);
+}
+.approval.connect {
+  border-color: rgba(90, 209, 230, 0.4);
+}
+.approval.connect .approval-kicker {
+  color: var(--accent);
+}
+.approval-url {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+.approval-secret {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin: 4px 0 8px;
+}
+.approval-secret input {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px 9px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  outline: none;
+}
+.approval-secret input:focus {
+  border-color: var(--accent);
+}

@@ -236,7 +236,7 @@ export function App() {
   useEffect(() => {
     return api.onApproval((req) => {
       const run = runsByRunId.current.get(req.runId)
-      if (run && alwaysAllow.current.get(run.convId)?.has(req.toolName)) {
+      if (run && !req.connect && alwaysAllow.current.get(run.convId)?.has(req.toolName)) {
         void api.respondApproval(req.requestId, { behavior: 'allow' })
         return
       }
@@ -257,7 +257,7 @@ export function App() {
         alwaysAllow.current.set(convId, set)
         // Release any queued requests this rule now covers.
         return rest.filter((r) => {
-          const covered = runsByRunId.current.get(r.runId)?.convId === convId && r.toolName === head.toolName
+          const covered = !r.connect && runsByRunId.current.get(r.runId)?.convId === convId && r.toolName === head.toolName
           if (covered) void api.respondApproval(r.requestId, { behavior: 'allow' })
           return !covered
         })
