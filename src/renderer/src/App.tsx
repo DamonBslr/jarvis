@@ -11,6 +11,7 @@ import type {
 } from '@shared/types'
 import { MessageView } from './MessageView'
 import { SettingsPanel } from './SettingsPanel'
+import { MemoryPanel } from './MemoryPanel'
 
 const api = window.jarvis
 const PROVIDER_LABEL: Record<ProviderId, string> = { claude: 'Claude Code', codex: 'Codex', ollama: 'Ollama' }
@@ -53,6 +54,8 @@ function applyEvent(msg: ChatMessage, ev: AgentEvent): ChatMessage {
       }
     case 'error':
       return { ...msg, error: msg.error ? `${msg.error}\n${ev.message}` : ev.message }
+    case 'context':
+      return { ...msg, context: ev.items }
     case 'done':
       return {
         ...msg,
@@ -86,6 +89,7 @@ export function App() {
   const [runs, setRuns] = useState<Record<string, ActiveRun>>({}) // keyed by convId
   const [draft, setDraft] = useState('')
   const [showSettings, setShowSettings] = useState(false)
+  const [showMemory, setShowMemory] = useState(false)
 
   const runsByRunId = useRef(new Map<string, ActiveRun>())
   const dirty = useRef(new Set<string>())
@@ -152,6 +156,16 @@ export function App() {
     })
   }, [updateConv])
 
+  // Memories learned from a finished turn (arrives a few seconds after the answer).
+  useEffect(() => {
+    return api.onLearned((ev) => {
+      updateConv(ev.convId, (c) => ({
+        ...c,
+        messages: c.messages.map((m) => (m.id === ev.msgId ? { ...m, learned: ev.added } : m))
+      }))
+    })
+  }, [updateConv])
+
   // Stick to bottom while streaming
   useEffect(() => {
     const el = scrollRef.current
@@ -165,7 +179,7 @@ export function App() {
       id: uid(),
       title: 'New chat',
       provider: firstAvailable,
-      modeId: 'general',
+      modeId: 'auto',
       cwd: active?.cwd ?? settings.defaultCwd,
       autonomy: 'edit',
       sessions: {},
@@ -184,10 +198,6 @@ export function App() {
     if (!prompt || !settings) return
     const conv = active ?? newConversation()
     if (!conv || runs[conv.id]) return
-
-    const mode = modes.find((m) => m.id === conv.modeId)
-    const status = providerStatus(conv.provider)
-    const model = conv.model ?? (conv.provider === 'ollama' ? status?.models?.[0] : undefined)
 
     const userMsg: ChatMessage = { id: uid(), role: 'user', parts: [{ type: 'text', text: prompt }], createdAt: Date.now() }
     const asstMsg: ChatMessage = {
@@ -220,18 +230,43 @@ export function App() {
     })
     setDraft('')
 
+    // Auto mode: classify the first message (Jev / heuristic), then lock the conversation to that mode.
+    let { provider, modeId, model } = conv
+    if (modeId === 'auto') {
+      const decision = await api.route(prompt, conv.provider).catch(() => null)
+      modeId = decision?.modeId ?? 'general'
+      if (decision && decision.provider !== provider) {
+        provider = decision.provider
+        model = undefined
+      }
+      run.provider = provider
+      updateConv(conv.id, (c) => ({
+        ...c,
+        modeId,
+        provider,
+        model,
+        messages: c.messages.map((m) => (m.id === asstMsg.id ? { ...m, provider, route: decision ?? undefined } : m))
+      }))
+    }
+
+    const mode = modes.find((m) => m.id === modeId)
+    const status = providerStatus(provider)
+    const effectiveModel = model ?? (provider === 'ollama' ? status?.models?.[0] : undefined)
+
     await api.run({
       runId,
-      provider: conv.provider,
+      convId: conv.id,
+      msgId: asstMsg.id,
+      provider,
       prompt,
       cwd: conv.cwd,
-      sessionId: conv.sessions[conv.provider],
-      model,
-      systemPrompt: mode?.systemPrompt,
-      history: conv.provider === 'ollama' ? historyFor(conv) : undefined,
+      sessionId: conv.sessions[provider],
+      model: effectiveModel,
+      systemPrompt: mode?.systemPrompt || undefined,
+      history: provider === 'ollama' ? historyFor(conv) : undefined,
       autonomy: conv.autonomy
     })
-  }, [draft, settings, active, newConversation, runs, modes, providers])
+  }, [draft, settings, active, newConversation, runs, modes, providers, updateConv])
 
   const cancel = useCallback(() => {
     if (activeRun) void api.cancel(activeRun.runId)
@@ -329,6 +364,9 @@ export function App() {
               </div>
             ))}
           </div>
+          <button className="ghost" onClick={() => setShowMemory(true)}>
+            Memory
+          </button>
           <button className="ghost" onClick={() => setShowSettings(true)}>
             Settings
           </button>
@@ -446,6 +484,8 @@ export function App() {
           </div>
         </footer>
       </main>
+
+      {showMemory && <MemoryPanel onClose={() => setShowMemory(false)} />}
 
       {showSettings && (
         <SettingsPanel

@@ -21,8 +21,14 @@ export const codexProvider: Provider = {
     if (req.model && req.model !== 'default') common.push('-m', req.model)
 
     // Codex has no system-prompt flag in exec mode; prefix the first turn instead.
-    const prompt =
-      !req.sessionId && req.systemPrompt ? `<instructions>\n${req.systemPrompt}\n</instructions>\n\n${req.prompt}` : req.prompt
+    // Mode instructions go in once; memory context is per turn since it depends on the prompt.
+    const prompt = [
+      !req.sessionId && req.systemPrompt ? `<instructions>\n${req.systemPrompt}\n</instructions>` : '',
+      req.context ?? '',
+      req.prompt
+    ]
+      .filter(Boolean)
+      .join('\n\n')
 
     const args = req.sessionId
       ? ['exec', 'resume', ...common, req.sessionId, '-']

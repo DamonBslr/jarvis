@@ -25,13 +25,46 @@ Shortcuts: `⌘⇧Space` summon from anywhere · `⌘N` new chat · `Esc` stop r
 - **Autonomy**: `Read-only` (Claude plan mode / Codex read-only sandbox), `Edit files` (acceptEdits / workspace-write), `Full access` (bypass / no sandbox).
 - **Workspace**: folder the agent runs in (click the folder chip).
 
+## Memory & knowledge
+
+Jarvis keeps a local SQLite store (`~/Library/Application Support/jarvis/jarvis.db`):
+
+- **Memories**: short facts about you (`profile`, `preference`, `workflow`, `project`, `person`, `fact`). Pinned ones go into every run; others are retrieved by relevance.
+- **Knowledge**: folders you add (notes, docs, repos), chunked and indexed incrementally.
+- **Retrieval**: hybrid BM25 (FTS5) + embeddings (Ollama `embeddinggemma`), merged with reciprocal rank fusion. Without Ollama it runs keyword-only.
+- **Learning**: after each turn, Jev decides whether you said something worth remembering (`noul` question). If so, Claude Haiku runs with no tools, MCP, hooks or saved session, or a local Ollama model if you choose that, and returns add/update operations. Near-duplicates (cosine > 0.92) update the existing memory instead of adding a new one.
+- Manage everything in **Memory** (sidebar): edit, pin, forget, add folders, status.
+
+## Jev classifier
+
+[Jev-style](https://github.com/lawrence3699/jev-style) decision models answer `choice` / `noul` / `score` questions with probabilities through `POST /v1/systemone`. Jarvis uses Jev for:
+
+- **Auto mode routing**: picks the mode and engine for a new chat's first message.
+- **Memory gating**: decides whether a turn should be learned from.
+
+```bash
+uvx --from "jev-style[mlx]" jev-style serve      # :8765, Apple silicon
+```
+
+When the Jev server is offline, Jarvis uses keyword heuristics instead. The URL is set in Settings; jevos (`:8017`) works too. To test without the model: `bun scripts/mock-jev.ts`.
+
+## Tests
+
+```bash
+JARVIS_DB_DIR=$(mktemp -d) npx tsx scripts/memory-test.mts          # memory, RAG, routing
+JARVIS_DB_DIR=$(mktemp -d) npx tsx scripts/memory-test.mts --learn  # + real learner call
+bun scripts/smoke.ts codex "prompt"                                  # provider adapters
+```
+
 ## Layout
 
 ```
 src/main/            Electron main: IPC, window, hotkey
   providers/         one adapter per engine -> normalized AgentEvent stream
   shellEnv.ts        loads PATH/env from your login shell (GUI apps don't get it)
-  modes.ts           personas
+  modes.ts           personas (+ Auto)
+  classify/          Jev client + router
+  memory/            SQLite store, embeddings, hybrid search, folder indexer, context builder, learner
   store.ts           JSON persistence in ~/Library/Application Support/jarvis
 src/preload/         typed bridge (window.jarvis)
 src/renderer/        React UI

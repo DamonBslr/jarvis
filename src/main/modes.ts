@@ -6,6 +6,12 @@ import type { Mode } from '@shared/types'
  */
 export const MODES: Mode[] = [
   {
+    id: 'auto',
+    name: 'Auto',
+    description: 'Jarvis picks the mode and engine for the first message (Jev classifier, keyword fallback).',
+    systemPrompt: ''
+  },
+  {
     id: 'general',
     name: 'Jarvis',
     description: 'General assistant. Answers, researches, runs tasks in the workspace.',

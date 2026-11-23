@@ -12,7 +12,12 @@ export const DEFAULT_SETTINGS: Settings = {
   preferSubscription: true,
   ollamaUrl: 'http://127.0.0.1:11434',
   defaultCwd: homedir(),
-  hotkey: 'CommandOrControl+Shift+Space'
+  hotkey: 'CommandOrControl+Shift+Space',
+  jevUrl: 'http://127.0.0.1:8765',
+  embedModel: 'embeddinggemma',
+  learnEngine: 'claude',
+  learnOllamaModel: 'gemma3',
+  useMemory: true
 }
 
 async function atomicWrite(path: string, data: string) {

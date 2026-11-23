@@ -55,7 +55,8 @@ export const claudeProvider: Provider = {
     ]
     if (req.sessionId) args.push('--resume', req.sessionId)
     if (req.model && req.model !== 'default') args.push('--model', req.model)
-    if (req.systemPrompt) args.push('--append-system-prompt', req.systemPrompt)
+    const extra = [req.systemPrompt, req.context].filter(Boolean).join('\n\n')
+    if (extra) args.push('--append-system-prompt', extra)
 
     let sawResult = false
 

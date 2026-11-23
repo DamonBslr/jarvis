@@ -4,6 +4,33 @@ import remarkGfm from 'remark-gfm'
 import type { ChatMessage, MessagePart } from '@shared/types'
 
 const PROVIDER_LABEL = { claude: 'Claude Code', codex: 'Codex', ollama: 'Ollama' } as const
+const MODE_LABEL: Record<string, string> = { general: 'Jarvis', code: 'Code · Git · Linear', local: 'Local quick' }
+
+function ContextChip({ items }: { items: NonNullable<ChatMessage['context']> }) {
+  const [open, setOpen] = useState(false)
+  const mems = items.filter((i) => i.kind === 'memory').length
+  const docs = items.length - mems
+  const label = [mems && `${mems} memor${mems === 1 ? 'y' : 'ies'}`, docs && `${docs} doc${docs === 1 ? '' : 's'}`]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    <span className="chip-wrap">
+      <button className="chip" onClick={() => setOpen((o) => !o)} title="Context injected from memory">
+        recalled {label}
+      </button>
+      {open && (
+        <div className="chip-pop">
+          {items.map((i) => (
+            <div key={`${i.kind}${i.id}`} className="chip-pop-row">
+              <span className="chip-kind">{i.kind === 'memory' ? 'mem' : 'doc'}</span>
+              {i.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </span>
+  )
+}
 
 function summarizeInput(name: string, input: string): string {
   try {
@@ -75,6 +102,22 @@ export const MessageView = memo(function MessageView({
             ≈${message.costUsd.toFixed(3)}
           </span>
         )}
+        {message.route && (
+          <span
+            className="chip static"
+            title={
+              message.route.probabilities
+                ? Object.entries(message.route.probabilities)
+                    .map(([k, v]) => `${MODE_LABEL[k] ?? k}: ${Math.round(v * 100)}%`)
+                    .join('\n')
+                : 'keyword heuristic (Jev offline)'
+            }
+          >
+            routed → {MODE_LABEL[message.route.modeId] ?? message.route.modeId}
+            {message.route.via === 'jev' ? ` · ${Math.round(message.route.confidence * 100)}% jev` : ' · heuristic'}
+          </span>
+        )}
+        {message.context && message.context.length > 0 && <ContextChip items={message.context} />}
       </div>
       {message.parts.map((p, i) => {
         if (p.type === 'text')
@@ -94,6 +137,15 @@ export const MessageView = memo(function MessageView({
         </div>
       )}
       {message.error && <div className="error">{message.error}</div>}
+      {message.learned && message.learned.length > 0 && (
+        <div className="learned">
+          {message.learned.map((l) => (
+            <div key={l.id}>
+              <span className="learned-tag">{l.updated ? 'updated memory' : 'learned'}</span> {l.content}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 })

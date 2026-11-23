@@ -88,3 +88,32 @@ export function stderrSummary(tail: string): string {
   const lines = tail.trim().split('\n').filter(Boolean)
   return lines.slice(-6).join('\n') || 'process exited with an error'
 }
+
+/** Run a command to completion with stdin, returning stdout (rejects on non-zero exit or timeout). */
+export function runOnce(
+  cmd: string,
+  args: string[],
+  opts: { stdin: string; env: NodeJS.ProcessEnv; cwd: string; timeoutMs: number }
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { cwd: opts.cwd, env: opts.env, stdio: ['pipe', 'pipe', 'pipe'] })
+    let out = ''
+    let err = ''
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL')
+      reject(new Error(`${cmd} timed out`))
+    }, opts.timeoutMs)
+    child.stdout.on('data', (c) => (out += c))
+    child.stderr.on('data', (c) => (err = (err + c).slice(-4000)))
+    child.on('error', (e) => {
+      clearTimeout(timer)
+      reject(e)
+    })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      if (code === 0) resolve(out)
+      else reject(new Error(stderrSummary(err) || `${cmd} exited ${code}`))
+    })
+    child.stdin.end(opts.stdin)
+  })
+}

@@ -24,7 +24,9 @@ export async function loadShellEnv(): Promise<NodeJS.ProcessEnv> {
           const i = entry.indexOf('=')
           if (i > 0) out[entry.slice(0, i)] = entry.slice(i + 1)
         }
-        resolve({ ...process.env, ...out })
+        // Use the login shell's env only: the process env may carry vars from whatever launched
+        // Jarvis (e.g. a parent Claude Code session's API token), which must not leak into children.
+        resolve(out)
       }
     )
   })

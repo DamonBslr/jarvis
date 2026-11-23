@@ -46,6 +46,45 @@ export function SettingsPanel({
           <input value={s.ollamaUrl} onChange={(e) => setS({ ...s, ollamaUrl: e.target.value })} />
         </label>
 
+        <label className="row check">
+          <input type="checkbox" checked={s.useMemory} onChange={(e) => setS({ ...s, useMemory: e.target.checked })} />
+          <div>
+            <div>Use memory</div>
+            <small>Inject what Jarvis knows about you and relevant knowledge-folder excerpts into every run.</small>
+          </div>
+        </label>
+
+        <div className="row-pair">
+          <label className="row">
+            <span>Learn with</span>
+            <select
+              value={s.learnEngine}
+              onChange={(e) => setS({ ...s, learnEngine: e.target.value as Settings['learnEngine'] })}
+            >
+              <option value="claude">Claude Haiku (subscription)</option>
+              <option value="ollama">Ollama (fully local)</option>
+              <option value="off">Off</option>
+            </select>
+          </label>
+          {s.learnEngine === 'ollama' && (
+            <label className="row">
+              <span>Learner model</span>
+              <input value={s.learnOllamaModel} onChange={(e) => setS({ ...s, learnOllamaModel: e.target.value })} />
+            </label>
+          )}
+        </div>
+
+        <div className="row-pair">
+          <label className="row">
+            <span>Jev classifier URL</span>
+            <input value={s.jevUrl} onChange={(e) => setS({ ...s, jevUrl: e.target.value })} />
+          </label>
+          <label className="row">
+            <span>Embedding model (Ollama)</span>
+            <input value={s.embedModel} onChange={(e) => setS({ ...s, embedModel: e.target.value })} />
+          </label>
+        </div>
+
         <label className="row">
           <span>Summon hotkey</span>
           <input value={s.hotkey} onChange={(e) => setS({ ...s, hotkey: e.target.value })} />

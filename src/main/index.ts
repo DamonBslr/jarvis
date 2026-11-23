@@ -9,6 +9,13 @@ import { ollamaProvider } from './providers/ollama'
 import type { Provider, RunHandle } from './providers/types'
 import * as store from './store'
 import { MODES } from './modes'
+import { route } from './classify/router'
+import { jevHealth } from './classify/jev'
+import { buildContext } from './memory/context'
+import { learnFromTurn } from './memory/learn'
+import { probeEmbeddings } from './memory/embed'
+import * as mem from './memory/memories'
+import * as kb from './memory/knowledge'
 
 const providers: Record<ProviderId, Provider> = {
   claude: claudeProvider,
@@ -20,14 +27,29 @@ const runs = new Map<string, RunHandle>()
 let win: BrowserWindow | null = null
 let registeredHotkey: string | null = null
 
+// Vars a parent Claude Code / agent session sets for itself; children must not inherit them.
+const SESSION_VARS = [
+  'CLAUDECODE',
+  'CLAUDE_CODE_ENTRYPOINT',
+  'CLAUDE_CODE_SESSION_ID',
+  'CLAUDE_CODE_CHILD_SESSION',
+  'CLAUDE_CODE_SESSION_ATTENDED',
+  'CLAUDE_CODE_MESSAGING_SOCKET',
+  'CLAUDE_CODE_MESSAGING_TOKEN',
+  'CLAUDE_CODE_EXECPATH',
+  'CLAUDE_AGENT_SDK_VERSION',
+  'CLAUDE_PID'
+]
+
 function childEnv(base: NodeJS.ProcessEnv, provider: ProviderId, settings: Settings): NodeJS.ProcessEnv {
   const env = { ...base }
-  // If Jarvis itself is started from inside a Claude Code session, don't leak that into children.
-  delete env.CLAUDECODE
-  delete env.CLAUDE_CODE_ENTRYPOINT
+  for (const k of SESSION_VARS) delete env[k]
   if (provider === 'claude' && settings.preferSubscription) {
-    // An API key takes precedence over the subscription login and bills per token.
+    // Any of these take precedence over the subscription (OAuth) login and bill per token
+    // or point at a different endpoint.
     delete env.ANTHROPIC_API_KEY
+    delete env.ANTHROPIC_AUTH_TOKEN
+    delete env.ANTHROPIC_BASE_URL
   }
   return env
 }
@@ -132,9 +154,106 @@ function registerIpc() {
     }
 
     const [env, settings] = await Promise.all([loadShellEnv(), store.getSettings()])
-    const handle = provider.run(req, { env: childEnv(env, req.provider, settings), settings }, send)
+
+    if (settings.useMemory) {
+      try {
+        const ctx = await buildContext(req.prompt, settings)
+        if (ctx) {
+          req = { ...req, context: ctx.text }
+          send({ kind: 'context', items: ctx.refs })
+        }
+      } catch (err) {
+        send({ kind: 'log', message: `memory lookup failed: ${String(err)}` })
+      }
+    }
+
+    // Collect the answer so the learner can look at the whole turn afterwards.
+    let answer = ''
+    let failed = false
+    const handle = provider.run(req, { env: childEnv(env, req.provider, settings), settings }, (ev) => {
+      if (ev.kind === 'text') answer += ev.delta
+      if (ev.kind === 'error') failed = true
+      send(ev)
+    })
     runs.set(req.runId, handle)
-    void handle.finished.finally(() => runs.delete(req.runId))
+    void handle.finished.finally(() => {
+      runs.delete(req.runId)
+      if (failed || !req.convId || !req.msgId) return
+      learnFromTurn(
+        { convId: req.convId, msgId: req.msgId, prompt: req.prompt, answer },
+        settings,
+        childEnv(env, 'claude', settings)
+      )
+        .then((learned) => {
+          if (learned && !e.sender.isDestroyed()) e.sender.send('jarvis:learned', learned)
+        })
+        .catch((err) => console.warn('[jarvis] learning failed:', err))
+    })
+  })
+
+  ipcMain.handle('route', async (_e, prompt: string, fallback: ProviderId) => {
+    const [env, settings] = await Promise.all([loadShellEnv(), store.getSettings()])
+    const statuses = await Promise.all(
+      (Object.keys(providers) as ProviderId[]).map((id) =>
+        providers[id].status({ env: childEnv(env, id, settings), settings })
+      )
+    )
+    return route(
+      prompt,
+      MODES.filter((m) => m.id !== 'auto'),
+      statuses,
+      fallback,
+      settings
+    )
+  })
+
+  // Memory + knowledge
+  const notifySources = () => win?.webContents.send('jarvis:sources-changed')
+  ipcMain.handle('memory:list', async (_e, query?: string) => {
+    if (!query?.trim()) return mem.listMemories()
+    const settings = await store.getSettings()
+    return mem.searchMemories(query, null, settings, 50).map((r) => r.item)
+  })
+  ipcMain.handle('memory:add', async (_e, m) => mem.addMemory(m, await store.getSettings()))
+  ipcMain.handle('memory:update', async (_e, id: number, patch) => mem.updateMemory(id, patch, await store.getSettings()))
+  ipcMain.handle('memory:remove', (_e, id: number) => mem.removeMemory(id))
+  ipcMain.handle('memory:sources', () => kb.listSources())
+  ipcMain.handle('memory:addSource', async (_e, path: string) => {
+    const ok = await stat(path).then(() => true, () => false)
+    if (!ok) throw new Error(`Not found: ${path}`)
+    const id = kb.addSource(path)
+    notifySources()
+    void kb.indexSource(id, await store.getSettings(), notifySources)
+  })
+  ipcMain.handle('memory:removeSource', (_e, id: number) => {
+    kb.removeSource(id)
+    notifySources()
+  })
+  ipcMain.handle('memory:reindex', async (_e, id: number) => {
+    void kb.indexSource(id, await store.getSettings(), notifySources)
+  })
+  ipcMain.handle('memory:status', async () => {
+    const settings = await store.getSettings()
+    const [jev, embeddings] = await Promise.all([jevHealth(settings.jevUrl, true), probeEmbeddings(settings)])
+    if (embeddings.online) {
+      void mem.backfillMemoryEmbeddings(settings)
+      void kb.backfillChunkEmbeddings(settings, notifySources)
+    }
+    return {
+      memories: mem.countMemories(),
+      chunks: kb.countChunks(),
+      jev: { online: jev.online, url: settings.jevUrl, model: jev.model },
+      embeddings,
+      learner: {
+        engine: settings.learnEngine,
+        detail:
+          settings.learnEngine === 'claude'
+            ? 'Claude Haiku via your subscription (lean: no tools/MCP/hooks)'
+            : settings.learnEngine === 'ollama'
+              ? `Ollama ${settings.learnOllamaModel}`
+              : 'Learning disabled'
+      }
+    }
   })
 
   ipcMain.handle('cancel', (_e, runId: string) => runs.get(runId)?.cancel())

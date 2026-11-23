@@ -12,6 +12,10 @@ export type AgentEvent =
   | { kind: 'done'; costUsd?: number; durationMs?: number }
   | { kind: 'error'; message: string }
   | { kind: 'log'; message: string }
+  /** Memory + knowledge injected into this run. */
+  | { kind: 'context'; items: ContextRef[] }
+  /** Auto-routing decision (Jev or heuristic). */
+  | { kind: 'route'; route: RouteDecision }
 
 export interface RunRequest {
   runId: string
@@ -27,6 +31,10 @@ export interface RunRequest {
   history?: { role: 'user' | 'assistant'; content: string }[]
   /** Autonomy level. 'ask' = read-only / plan, 'edit' = may edit files in cwd, 'full' = no sandbox. */
   autonomy: 'ask' | 'edit' | 'full'
+  /** Retrieved memory/knowledge block, filled in by main before the provider runs. */
+  context?: string
+  convId?: string
+  msgId?: string
 }
 
 export interface ProviderStatus {
@@ -45,6 +53,59 @@ export interface Mode {
   defaultProvider?: ProviderId
 }
 
+export type MemoryType = 'profile' | 'preference' | 'project' | 'workflow' | 'person' | 'fact'
+
+export interface Memory {
+  id: number
+  type: MemoryType
+  content: string
+  /** Where it came from: 'manual' | 'learned' | conversation id. */
+  source: string
+  pinned: boolean
+  uses: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface KnowledgeSource {
+  id: number
+  path: string
+  status: 'pending' | 'indexing' | 'ready' | 'error'
+  files: number
+  chunks: number
+  indexedAt?: number
+  error?: string
+}
+
+export interface ContextRef {
+  kind: 'memory' | 'chunk'
+  id: number
+  label: string
+  score: number
+}
+
+export interface RouteDecision {
+  modeId: string
+  provider: ProviderId
+  confidence: number
+  via: 'jev' | 'heuristic'
+  probabilities?: Record<string, number>
+}
+
+export interface LearnedEvent {
+  convId: string
+  msgId: string
+  added: { id: number; type: MemoryType; content: string; updated?: boolean }[]
+}
+
+export interface MemoryStatus {
+  memories: number
+  chunks: number
+  jev: { online: boolean; url: string; model?: string }
+  embeddings: { online: boolean; model: string; detail?: string }
+  learner: { engine: Settings['learnEngine']; detail?: string }
+}
+
 export type MessagePart =
   | { type: 'text'; text: string }
   | { type: 'thinking'; text: string }
@@ -58,6 +119,9 @@ export interface ChatMessage {
   error?: string
   costUsd?: number
   createdAt: number
+  context?: ContextRef[]
+  route?: RouteDecision
+  learned?: LearnedEvent['added']
 }
 
 export interface Conversation {
@@ -80,6 +144,15 @@ export interface Settings {
   ollamaUrl: string
   defaultCwd: string
   hotkey: string
+  /** Jev-style decision server (jev-style: 8765, jevos: 8017). */
+  jevUrl: string
+  /** Ollama embedding model for semantic search (falls back to keyword search if missing). */
+  embedModel: string
+  /** Who extracts memories after a turn. */
+  learnEngine: 'claude' | 'ollama' | 'off'
+  learnOllamaModel: string
+  /** Inject memory + knowledge into every run. */
+  useMemory: boolean
 }
 
 export interface JarvisApi {
@@ -94,4 +167,18 @@ export interface JarvisApi {
   getSettings(): Promise<Settings>
   saveSettings(s: Settings): Promise<void>
   modes(): Promise<Mode[]>
+  onLearned(cb: (ev: LearnedEvent) => void): () => void
+  route(prompt: string, fallback: ProviderId): Promise<RouteDecision>
+  memory: {
+    list(query?: string): Promise<Memory[]>
+    add(m: { type: MemoryType; content: string; pinned?: boolean }): Promise<Memory>
+    update(id: number, patch: Partial<Pick<Memory, 'type' | 'content' | 'pinned'>>): Promise<void>
+    remove(id: number): Promise<void>
+    sources(): Promise<KnowledgeSource[]>
+    addSource(path: string): Promise<void>
+    removeSource(id: number): Promise<void>
+    reindex(id: number): Promise<void>
+    status(): Promise<MemoryStatus>
+    onSourcesChanged(cb: () => void): () => void
+  }
 }

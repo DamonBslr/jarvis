@@ -28,7 +28,9 @@ export const ollamaProvider: Provider = {
     const started = Date.now()
 
     const messages = [
-      ...(req.systemPrompt ? [{ role: 'system', content: req.systemPrompt }] : []),
+      ...(req.systemPrompt || req.context
+        ? [{ role: 'system', content: [req.systemPrompt, req.context].filter(Boolean).join('\n\n') }]
+        : []),
       ...(req.history ?? []),
       { role: 'user', content: req.prompt }
     ]
