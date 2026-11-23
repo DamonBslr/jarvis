@@ -17,7 +17,9 @@ export const DEFAULT_SETTINGS: Settings = {
   embedModel: 'embeddinggemma',
   learnEngine: 'claude',
   learnOllamaModel: 'gemma3',
-  useMemory: true
+  useMemory: true,
+  linearRepoMap: {},
+  linearAutoMove: true
 }
 
 async function atomicWrite(path: string, data: string) {

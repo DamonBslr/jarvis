@@ -16,6 +16,10 @@ import { learnFromTurn } from './memory/learn'
 import { probeEmbeddings } from './memory/embed'
 import * as mem from './memory/memories'
 import * as kb from './memory/knowledge'
+import { bridgeLaunch, respondApproval, startBridge } from './mcp/server'
+import * as git from './integrations/git'
+import * as linear from './integrations/linear'
+import { getSecret, setSecret } from './secrets'
 
 const providers: Record<ProviderId, Provider> = {
   claude: claudeProvider,
@@ -24,6 +28,8 @@ const providers: Record<ProviderId, Provider> = {
 }
 
 const runs = new Map<string, RunHandle>()
+/** Open approval requests: requestId -> runId (so ending a run denies its pending prompts). */
+const openApprovals = new Map<string, string>()
 let win: BrowserWindow | null = null
 let registeredHotkey: string | null = null
 
@@ -56,8 +62,8 @@ function childEnv(base: NodeJS.ProcessEnv, provider: ProviderId, settings: Setti
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 1180,
-    height: 800,
+    width: 1440,
+    height: 880,
     minWidth: 760,
     minHeight: 520,
     show: false,
@@ -76,6 +82,12 @@ function createWindow() {
   const shot = process.env.JARVIS_SCREENSHOT
   if (shot) {
     win.webContents.once('did-finish-load', () => {
+      const autoclick = process.env.JARVIS_SCREENSHOT_AUTOCLICK
+      if (autoclick) {
+        setInterval(() => {
+          void win?.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(autoclick)})?.click()`)
+        }, 1500)
+      }
       const prompt = process.env.JARVIS_SCREENSHOT_PROMPT
       if (prompt) {
         setTimeout(() => {
@@ -167,6 +179,12 @@ function registerIpc() {
       }
     }
 
+    // Jarvis tools for the agent: memory + Linear always, approval popups for Claude.
+    if (req.provider !== 'ollama') {
+      const groups = ['memory', 'linear', ...(req.provider === 'claude' ? ['approve'] : [])]
+      req = { ...req, mcp: bridgeLaunch(req.runId, groups) }
+    }
+
     // Collect the answer so the learner can look at the whole turn afterwards.
     let answer = ''
     let failed = false
@@ -178,6 +196,12 @@ function registerIpc() {
     runs.set(req.runId, handle)
     void handle.finished.finally(() => {
       runs.delete(req.runId)
+      for (const [reqId, rId] of openApprovals) {
+        if (rId === req.runId) {
+          openApprovals.delete(reqId)
+          respondApproval(reqId, { behavior: 'deny', message: 'Run ended' })
+        }
+      }
       if (failed || !req.convId || !req.msgId) return
       learnFromTurn(
         { convId: req.convId, msgId: req.msgId, prompt: req.prompt, answer },
@@ -205,6 +229,60 @@ function registerIpc() {
       fallback,
       settings
     )
+  })
+
+  ipcMain.handle('approval:respond', (_e, requestId: string, decision) => {
+    openApprovals.delete(requestId)
+    respondApproval(requestId, decision)
+  })
+  ipcMain.handle('openExternal', (_e, url: string) => {
+    if (/^https:\/\//.test(url)) return shell.openExternal(url)
+  })
+
+  // Git
+  ipcMain.handle('git:status', async (_e, cwd: string) => git.status(cwd, await loadShellEnv()))
+  ipcMain.handle('git:diff', async (_e, cwd: string, path: string) => git.diff(cwd, path, await loadShellEnv()))
+  ipcMain.handle('git:pr', async (_e, cwd: string) => git.currentPr(cwd, await loadShellEnv()))
+
+  // Linear (UI reads/updates directly with your personal API key, stored encrypted)
+  const linearStatus = async () => {
+    const key = await getSecret('linear')
+    if (!key) return { connected: false }
+    try {
+      const v = await linear.viewer(key)
+      return { connected: true, user: v.name }
+    } catch (err) {
+      return { connected: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+  const requireKey = async () => {
+    const key = await getSecret('linear')
+    if (!key) throw new Error('Linear not connected')
+    return key
+  }
+  ipcMain.handle('linear:status', linearStatus)
+  ipcMain.handle('linear:setKey', async (_e, key: string) => {
+    const trimmed = key.trim()
+    try {
+      const v = await linear.viewer(trimmed)
+      await setSecret('linear', trimmed)
+      return { connected: true, user: v.name }
+    } catch (err) {
+      return { connected: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+  ipcMain.handle('linear:clearKey', () => setSecret('linear', null))
+  ipcMain.handle('linear:myIssues', async () => linear.myIssues(await requireKey()))
+  ipcMain.handle('linear:startWork', async (_e, identifier: string) => {
+    if (!(await store.getSettings()).linearAutoMove) return null
+    return linear.setState(await requireKey(), identifier, { type: 'started' })
+  })
+  ipcMain.handle('linear:linkPr', async (_e, identifier: string, url: string) => {
+    const key = await requireKey()
+    await linear.attachUrl(key, identifier, url, `Pull request`).catch(() => {})
+    await linear.comment(key, identifier, `Pull request opened: ${url}`)
+    if (!(await store.getSettings()).linearAutoMove) return null
+    return linear.setState(key, identifier, { name: 'review' }).catch(() => null)
   })
 
   // Memory + knowledge
@@ -276,6 +354,19 @@ function registerIpc() {
 
 app.whenReady().then(async () => {
   void loadShellEnv() // warm up; first run spawns a login shell
+  await startBridge({
+    settings: () => store.getSettings(),
+    requestApproval(req) {
+      openApprovals.set(req.requestId, req.runId)
+      if (!win) return respondApproval(req.requestId, { behavior: 'deny', message: 'Jarvis window closed' })
+      win.webContents.send('jarvis:approval', req)
+      // Pull attention if Jarvis is in the background.
+      if (!win.isFocused()) {
+        if (process.platform === 'darwin') app.dock?.bounce('informational')
+        win.flashFrame(true)
+      }
+    }
+  })
   registerIpc()
   createWindow()
   registerHotkey((await store.getSettings()).hotkey)

@@ -55,6 +55,19 @@ export const claudeProvider: Provider = {
     ]
     if (req.sessionId) args.push('--resume', req.sessionId)
     if (req.model && req.model !== 'default') args.push('--model', req.model)
+    if (req.mcp) {
+      args.push('--mcp-config', JSON.stringify({ mcpServers: { jarvis: req.mcp } }))
+      // Read-only Jarvis tools never need a prompt; Linear writes still ask in "Edit files" mode.
+      args.push(
+        '--allowedTools',
+        'mcp__jarvis__memory_search',
+        'mcp__jarvis__remember',
+        'mcp__jarvis__linear_my_issues',
+        'mcp__jarvis__linear_get_issue'
+      )
+      // In "Edit files" mode, anything beyond file edits (shell, git, network) asks you in Jarvis.
+      if (req.autonomy === 'edit') args.push('--permission-prompt-tool', 'mcp__jarvis__approve')
+    }
     const extra = [req.systemPrompt, req.context].filter(Boolean).join('\n\n')
     if (extra) args.push('--append-system-prompt', extra)
 

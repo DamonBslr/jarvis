@@ -19,6 +19,20 @@ export const codexProvider: Provider = {
   run(req, { env }, emit) {
     const common = ['--json', '--skip-git-repo-check', '-c', `sandbox_mode="${SANDBOX[req.autonomy]}"`]
     if (req.model && req.model !== 'default') common.push('-m', req.model)
+    if (req.mcp) {
+      // TOML values: JSON strings/arrays are valid TOML; env needs an inline table.
+      const env = Object.entries(req.mcp.env)
+        .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+        .join(', ')
+      common.push(
+        '-c',
+        `mcp_servers.jarvis.command=${JSON.stringify(req.mcp.command)}`,
+        '-c',
+        `mcp_servers.jarvis.args=${JSON.stringify(req.mcp.args)}`,
+        '-c',
+        `mcp_servers.jarvis.env={${env}}`
+      )
+    }
 
     // Codex has no system-prompt flag in exec mode; prefix the first turn instead.
     // Mode instructions go in once; memory context is per turn since it depends on the prompt.

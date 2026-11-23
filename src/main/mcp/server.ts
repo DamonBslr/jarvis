@@ -1,0 +1,126 @@
+import { createServer, type IncomingMessage } from 'node:http'
+import { randomBytes, randomUUID } from 'node:crypto'
+import { join } from 'node:path'
+import type { AddressInfo } from 'node:net'
+import type { ApprovalDecision, ApprovalRequest, Settings } from '@shared/types'
+import { embed } from '../memory/embed'
+import { addMemory, searchMemories } from '../memory/memories'
+import { searchChunks } from '../memory/knowledge'
+import * as linear from '../integrations/linear'
+import { getSecret } from '../secrets'
+
+export interface BridgeDeps {
+  settings(): Promise<Settings>
+  /** Show an approval popup in the window that owns this run. */
+  requestApproval(req: ApprovalRequest): void
+}
+
+const token = randomBytes(24).toString('hex')
+let baseUrl = ''
+const pending = new Map<string, { resolve: (d: ApprovalDecision) => void; timer: NodeJS.Timeout }>()
+
+export function respondApproval(requestId: string, decision: ApprovalDecision) {
+  const p = pending.get(requestId)
+  if (!p) return
+  clearTimeout(p.timer)
+  pending.delete(requestId)
+  p.resolve(decision)
+}
+
+/** Deny everything still waiting for a run that ended or was cancelled. */
+
+async function readBody(req: IncomingMessage): Promise<any> {
+  let raw = ''
+  for await (const chunk of req) {
+    raw += chunk
+    if (raw.length > 2_000_000) throw new Error('body too large')
+  }
+  return JSON.parse(raw || '{}')
+}
+
+async function linearKey(): Promise<string> {
+  const key = await getSecret('linear')
+  if (!key) throw new Error('Linear is not connected. Ask the user to add a Linear API key in Jarvis → Settings.')
+  return key
+}
+
+async function handleTool(name: string, args: any, runId: string, deps: BridgeDeps): Promise<unknown> {
+  const settings = await deps.settings()
+  switch (name) {
+    case 'approve': {
+      const requestId = randomUUID()
+      const decision = await new Promise<ApprovalDecision>((resolve) => {
+        // Unanswered prompts deny after 10 minutes so the CLI never hangs forever.
+        const timer = setTimeout(() => respondApproval(requestId, { behavior: 'deny', message: 'No answer from user' }), 600_000)
+        pending.set(requestId, { resolve, timer })
+        deps.requestApproval({ requestId, runId, toolName: String(args.tool_name), input: args.input })
+      })
+      // Claude Code's permission-prompt contract.
+      return decision.behavior === 'allow'
+        ? { behavior: 'allow', updatedInput: args.input }
+        : { behavior: 'deny', message: decision.message || 'The user denied this action.' }
+    }
+    case 'memory_search': {
+      const q = String(args.query ?? '')
+      const vec = (await embed([q], settings))?.[0] ?? null
+      const mems = searchMemories(q, vec, settings, 10).map((r) => `[${r.item.type}] ${r.item.content}`)
+      const docs = searchChunks(q, vec, settings, 4).map((c) => `--- ${c.source}/${c.path}\n${c.text.slice(0, 1500)}`)
+      return [mems.length ? 'Memories:\n' + mems.join('\n') : 'No matching memories.', docs.join('\n\n')]
+        .filter(Boolean)
+        .join('\n\n')
+    }
+    case 'remember': {
+      const m = addMemory({ type: args.type, content: String(args.content ?? ''), source: 'agent' }, settings)
+      return `Saved memory #${m.id}`
+    }
+    case 'linear_my_issues': {
+      const issues = await linear.myIssues(await linearKey())
+      return issues.map((i) => `${i.identifier} [${i.state.name}] ${i.priorityLabel} — ${i.title}`).join('\n') || 'No open issues.'
+    }
+    case 'linear_get_issue':
+      return linear.getIssue(await linearKey(), String(args.id))
+    case 'linear_set_state': {
+      const s = await linear.setState(await linearKey(), String(args.id), { name: String(args.state) })
+      return `Moved ${args.id} to ${s.name}`
+    }
+    case 'linear_comment':
+      return linear.comment(await linearKey(), String(args.id), String(args.body))
+    default:
+      throw new Error(`unknown tool ${name}`)
+  }
+}
+
+export async function startBridge(deps: BridgeDeps) {
+  const server = createServer(async (req, res) => {
+    try {
+      // Loopback + token: other local processes/websites can't drive Jarvis tools.
+      if (req.headers['x-jarvis-token'] !== token || req.method !== 'POST' || req.url !== '/tool') {
+        res.writeHead(403).end('forbidden')
+        return
+      }
+      const { runId, name, args } = await readBody(req)
+      const result = await handleTool(String(name), args ?? {}, String(runId ?? ''), deps)
+      res.writeHead(200, { 'content-type': 'text/plain' }).end(typeof result === 'string' ? result : JSON.stringify(result, null, 2))
+    } catch (err) {
+      res.writeHead(500, { 'content-type': 'text/plain' }).end(err instanceof Error ? err.message : String(err))
+    }
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  return server
+}
+
+/** How a CLI should launch the bridge for a given run. */
+export function bridgeLaunch(runId: string, groups: string[]) {
+  return {
+    command: process.execPath,
+    args: [join(__dirname, 'bridge.js')],
+    env: {
+      ELECTRON_RUN_AS_NODE: '1',
+      JARVIS_BRIDGE_URL: baseUrl,
+      JARVIS_BRIDGE_TOKEN: token,
+      JARVIS_RUN_ID: runId,
+      JARVIS_TOOLS: groups.join(',')
+    }
+  }
+}

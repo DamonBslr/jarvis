@@ -85,6 +85,43 @@ export function SettingsPanel({
           </label>
         </div>
 
+        <label className="row check">
+          <input
+            type="checkbox"
+            checked={s.linearAutoMove}
+            onChange={(e) => setS({ ...s, linearAutoMove: e.target.checked })}
+          />
+          <div>
+            <div>Move Linear tickets automatically</div>
+            <small>In Progress when you start work on a ticket, In Review when you link its PR.</small>
+          </div>
+        </label>
+
+        {Object.keys(s.linearRepoMap).length > 0 && (
+          <div className="row">
+            <span>Linear team → repo</span>
+            {Object.entries(s.linearRepoMap).map(([team, path]) => (
+              <div key={team} className="repo-map">
+                <code>{team}</code>
+                <input
+                  value={path}
+                  onChange={(e) => setS({ ...s, linearRepoMap: { ...s.linearRepoMap, [team]: e.target.value } })}
+                />
+                <button
+                  className="icon del"
+                  onClick={() => {
+                    const next = { ...s.linearRepoMap }
+                    delete next[team]
+                    setS({ ...s, linearRepoMap: next })
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <label className="row">
           <span>Summon hotkey</span>
           <input value={s.hotkey} onChange={(e) => setS({ ...s, hotkey: e.target.value })} />

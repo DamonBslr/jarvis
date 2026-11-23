@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   AgentEvent,
+  ApprovalDecision,
+  ApprovalRequest,
+  LinearIssue,
   ChatMessage,
   Conversation,
   Mode,
@@ -12,6 +15,36 @@ import type {
 import { MessageView } from './MessageView'
 import { SettingsPanel } from './SettingsPanel'
 import { MemoryPanel } from './MemoryPanel'
+import { ApprovalDialog } from './ApprovalDialog'
+import { Workbench } from './Workbench'
+
+const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
+
+function findPrUrl(conv: Conversation): string | null {
+  for (let i = conv.messages.length - 1; i >= 0; i--) {
+    const m = conv.messages[i]
+    if (m.role !== 'assistant') continue
+    for (const p of m.parts) {
+      const text = p.type === 'text' ? p.text : p.type === 'tool' ? (p.output ?? '') : ''
+      const hit = text.match(PR_URL)
+      if (hit) return hit[0]
+    }
+  }
+  return null
+}
+
+function ticketPrompt(issue: LinearIssue): string {
+  return [
+    `Work on Linear issue ${issue.identifier}: ${issue.title}`,
+    issue.url,
+    '',
+    `1. Read the full issue with the jarvis linear_get_issue tool (description + comments).`,
+    `2. Check git status, then create and switch to branch \`${issue.branchName}\` from the up-to-date default branch.`,
+    `3. Explore the relevant code and tell me your plan in a few bullets before large changes.`,
+    `4. Implement, run the project's tests/lint, and commit with conventional commits referencing ${issue.identifier}.`,
+    `5. When it works, push and open a PR with gh whose body links ${issue.url}. Print the PR URL.`
+  ].join('\n')
+}
 
 const api = window.jarvis
 const PROVIDER_LABEL: Record<ProviderId, string> = { claude: 'Claude Code', codex: 'Codex', ollama: 'Ollama' }
@@ -90,6 +123,18 @@ export function App() {
   const [draft, setDraft] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [showMemory, setShowMemory] = useState(false)
+  const [showWorkbench, setShowWorkbench] = useState(() => {
+    try {
+      return localStorage.getItem('wb-open') !== '0'
+    } catch {
+      return true
+    }
+  })
+  const [gitTick, setGitTick] = useState(0)
+  const [approvals, setApprovals] = useState<ApprovalRequest[]>([])
+  const [dismissedPr, setDismissedPr] = useState<Set<string>>(new Set())
+  const [linking, setLinking] = useState(false)
+  const alwaysAllow = useRef(new Map<string, Set<string>>()) // convId -> tool names
 
   const runsByRunId = useRef(new Map<string, ActiveRun>())
   const dirty = useRef(new Set<string>())
@@ -146,6 +191,7 @@ export function App() {
         finalEvent || ev.kind === 'session'
       )
       if (finalEvent) {
+        setGitTick((t) => t + 1)
         runsByRunId.current.delete(runId)
         setRuns((r) => {
           const next = { ...r }
@@ -155,6 +201,47 @@ export function App() {
       }
     })
   }, [updateConv])
+
+  // Approval popups from the agent (Claude permission prompts via the Jarvis MCP bridge).
+  useEffect(() => {
+    return api.onApproval((req) => {
+      const run = runsByRunId.current.get(req.runId)
+      if (run && alwaysAllow.current.get(run.convId)?.has(req.toolName)) {
+        void api.respondApproval(req.requestId, { behavior: 'allow' })
+        return
+      }
+      setApprovals((q) => [...q, req])
+    })
+  }, [])
+
+  const decideApproval = useCallback((decision: ApprovalDecision, always?: boolean) => {
+    setApprovals((q) => {
+      const [head, ...rest] = q
+      if (!head) return q
+      void api.respondApproval(head.requestId, decision)
+      const convId = runsByRunId.current.get(head.runId)?.convId
+      if (always && convId) {
+        const set = alwaysAllow.current.get(convId) ?? new Set<string>()
+        set.add(head.toolName)
+        alwaysAllow.current.set(convId, set)
+        // Release any queued requests this rule now covers.
+        return rest.filter((r) => {
+          const covered = runsByRunId.current.get(r.runId)?.convId === convId && r.toolName === head.toolName
+          if (covered) void api.respondApproval(r.requestId, { behavior: 'allow' })
+          return !covered
+        })
+      }
+      return rest
+    })
+  }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('wb-open', showWorkbench ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }, [showWorkbench])
 
   // Memories learned from a finished turn (arrives a few seconds after the answer).
   useEffect(() => {
@@ -193,10 +280,10 @@ export function App() {
     return c
   }, [settings, providers, active?.cwd])
 
-  const send = useCallback(async () => {
-    const prompt = draft.trim()
+  const send = useCallback(async (text?: string, target?: Conversation) => {
+    const prompt = (text ?? draft).trim()
     if (!prompt || !settings) return
-    const conv = active ?? newConversation()
+    const conv = target ?? active ?? newConversation()
     if (!conv || runs[conv.id]) return
 
     const userMsg: ChatMessage = { id: uid(), role: 'user', parts: [{ type: 'text', text: prompt }], createdAt: Date.now() }
@@ -228,7 +315,7 @@ export function App() {
           : c
       )
     })
-    setDraft('')
+    if (text === undefined) setDraft('')
 
     // Auto mode: classify the first message (Jev / heuristic), then lock the conversation to that mode.
     let { provider, modeId, model } = conv
@@ -268,6 +355,54 @@ export function App() {
     })
   }, [draft, settings, active, newConversation, runs, modes, providers, updateConv])
 
+  /** "Work on it": new Code-mode chat bound to the ticket, in the team's repo, ticket moved to In Progress. */
+  const startTicket = useCallback(
+    async (issue: LinearIssue) => {
+      if (!settings) return
+      const existing = convs.find((c) => c.linear?.id === issue.id)
+      if (existing) return setActiveId(existing.id)
+
+      const cwd = settings.linearRepoMap[issue.teamKey] ?? active?.cwd ?? settings.defaultCwd
+      if (!settings.linearRepoMap[issue.teamKey]) {
+        const next = { ...settings, linearRepoMap: { ...settings.linearRepoMap, [issue.teamKey]: cwd } }
+        setSettings(next)
+        void api.saveSettings(next)
+      }
+      const conv: Conversation = {
+        id: uid(),
+        title: `${issue.identifier} ${issue.title}`.slice(0, 60),
+        provider: providerStatus('claude')?.available ? 'claude' : (providers.find((p) => p.available)?.id ?? 'claude'),
+        modeId: 'code',
+        cwd,
+        autonomy: 'edit',
+        sessions: {},
+        messages: [],
+        updatedAt: Date.now(),
+        linear: { id: issue.id, identifier: issue.identifier, title: issue.title, url: issue.url }
+      }
+      setConvs((prev) => [conv, ...prev])
+      setActiveId(conv.id)
+      void api.linear.startWork(issue.identifier).catch(() => null)
+      await send(ticketPrompt(issue), conv)
+    },
+    [settings, convs, active?.cwd, providers, send]
+  )
+
+  const prCandidate =
+    active?.linear && !active.linear.prLinked && !dismissedPr.has(active.id) && !activeRun ? findPrUrl(active) : null
+
+  const linkPr = async () => {
+    if (!active?.linear || !prCandidate) return
+    setLinking(true)
+    try {
+      const state = await api.linear.linkPr(active.linear.identifier, prCandidate)
+      updateConv(active.id, (c) => ({ ...c, linear: c.linear && { ...c.linear, prLinked: prCandidate } }))
+      if (state) setGitTick((t) => t + 1)
+    } finally {
+      setLinking(false)
+    }
+  }
+
   const cancel = useCallback(() => {
     if (activeRun) void api.cancel(activeRun.runId)
   }, [activeRun])
@@ -275,7 +410,10 @@ export function App() {
   // Global keys
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey && e.key.toLowerCase() === 'n') {
+      if (e.metaKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault()
+        setShowWorkbench((v) => !v)
+      } else if (e.metaKey && e.key.toLowerCase() === 'n') {
         e.preventDefault()
         newConversation()
       } else if (e.key === 'Escape' && activeRun) {
@@ -321,7 +459,7 @@ export function App() {
   if (!settings) return <div className="boot">Starting Jarvis…</div>
 
   return (
-    <div className="app">
+    <div className={`app ${showWorkbench && active ? 'with-wb' : ''}`}>
       <aside className="sidebar">
         <div className="sidebar-top drag">
           <div className="brand">
@@ -432,6 +570,21 @@ export function App() {
           ) : (
             <div />
           )}
+          <div className="topbar-right no-drag">
+            {active?.linear && (
+              <button className="ticket-chip" onClick={() => api.openExternal(active.linear!.url)} title={active.linear.title}>
+                {active.linear.identifier}
+                {active.linear.prLinked && ' · PR linked'}
+              </button>
+            )}
+            <button
+              className={`ghost wb-toggle ${showWorkbench ? 'on' : ''}`}
+              onClick={() => setShowWorkbench((v) => !v)}
+              title="Git & Linear workbench (⌘B)"
+            >
+              Workbench
+            </button>
+          </div>
         </header>
 
         <div className="messages" ref={scrollRef}>
@@ -453,6 +606,21 @@ export function App() {
             ))
           )}
         </div>
+
+        {prCandidate && active?.linear && (
+          <div className="pr-banner">
+            <span>
+              PR detected · link to <strong>{active.linear.identifier}</strong>
+              {settings.linearAutoMove ? ' and move to In Review' : ''}?
+            </span>
+            <button className="primary" disabled={linking} onClick={() => void linkPr()}>
+              {linking ? 'Linking…' : 'Link PR'}
+            </button>
+            <button className="ghost" onClick={() => setDismissedPr((s) => new Set(s).add(active.id))}>
+              Dismiss
+            </button>
+          </div>
+        )}
 
         <footer className="composer">
           <div className="composer-box">
@@ -484,6 +652,26 @@ export function App() {
           </div>
         </footer>
       </main>
+
+      {showWorkbench && active && (
+        <Workbench
+          cwd={active.cwd}
+          refreshKey={gitTick}
+          busy={!!activeRun}
+          onAsk={(prompt) => void send(prompt, active)}
+          onWork={(issue) => void startTicket(issue)}
+          repoFor={(team) => settings.linearRepoMap[team]}
+        />
+      )}
+
+      {approvals[0] && (
+        <ApprovalDialog
+          request={approvals[0]}
+          queued={approvals.length - 1}
+          chatTitle={convs.find((c) => c.id === runsByRunId.current.get(approvals[0].runId)?.convId)?.title}
+          onDecide={decideApproval}
+        />
+      )}
 
       {showMemory && <MemoryPanel onClose={() => setShowMemory(false)} />}
 

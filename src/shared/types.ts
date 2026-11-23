@@ -35,6 +35,8 @@ export interface RunRequest {
   context?: string
   convId?: string
   msgId?: string
+  /** Jarvis MCP bridge launch spec (set by main). */
+  mcp?: { command: string; args: string[]; env: Record<string, string> }
 }
 
 export interface ProviderStatus {
@@ -124,6 +126,67 @@ export interface ChatMessage {
   learned?: LearnedEvent['added']
 }
 
+export interface LinearState {
+  id: string
+  name: string
+  type: string // backlog | unstarted | started | completed | canceled | triage
+  color: string
+}
+
+export interface LinearIssue {
+  id: string
+  identifier: string
+  title: string
+  url: string
+  priority: number
+  priorityLabel: string
+  branchName: string
+  updatedAt: string
+  state: LinearState
+  teamId: string
+  teamKey: string
+  project?: string
+  description?: string
+}
+
+export interface GitFile {
+  path: string
+  /** porcelain XY codes: index / worktree ('.' unchanged, M, A, D, R, ?, U) */
+  index: string
+  worktree: string
+}
+
+export interface GitStatus {
+  isRepo: boolean
+  root?: string
+  branch?: string
+  upstream?: string
+  ahead?: number
+  behind?: number
+  files?: GitFile[]
+  commits?: { hash: string; subject: string; when: string; author: string }[]
+  remote?: string
+}
+
+export interface PullRequest {
+  number: number
+  title: string
+  url: string
+  state: string
+  isDraft: boolean
+  reviewDecision?: string
+  checks?: 'passing' | 'failing' | 'pending'
+}
+
+export interface ApprovalRequest {
+  requestId: string
+  runId: string
+  toolName: string
+  input: unknown
+}
+
+export type ApprovalDecision = { behavior: 'allow' } | { behavior: 'deny'; message?: string }
+
 export interface Conversation {
   id: string
   title: string
@@ -136,6 +199,8 @@ export interface Conversation {
   sessions: Partial<Record<ProviderId, string>>
   messages: ChatMessage[]
   updatedAt: number
+  /** Linear issue this chat is working on. */
+  linear?: { id: string; identifier: string; title: string; url: string; prLinked?: string }
 }
 
 export interface Settings {
@@ -153,6 +218,10 @@ export interface Settings {
   learnOllamaModel: string
   /** Inject memory + knowledge into every run. */
   useMemory: boolean
+  /** Linear team key -> local repo path, remembered when you start work on a ticket. */
+  linearRepoMap: Record<string, string>
+  /** Move tickets automatically: In Progress on start, In Review when a PR is linked. */
+  linearAutoMove: boolean
 }
 
 export interface JarvisApi {
@@ -169,6 +238,22 @@ export interface JarvisApi {
   modes(): Promise<Mode[]>
   onLearned(cb: (ev: LearnedEvent) => void): () => void
   route(prompt: string, fallback: ProviderId): Promise<RouteDecision>
+  onApproval(cb: (req: ApprovalRequest) => void): () => void
+  respondApproval(requestId: string, decision: ApprovalDecision): Promise<void>
+  openExternal(url: string): Promise<void>
+  git: {
+    status(cwd: string): Promise<GitStatus>
+    diff(cwd: string, path: string): Promise<string>
+    pr(cwd: string): Promise<PullRequest | null>
+  }
+  linear: {
+    status(): Promise<{ connected: boolean; user?: string; error?: string }>
+    setKey(key: string): Promise<{ connected: boolean; user?: string; error?: string }>
+    clearKey(): Promise<void>
+    myIssues(): Promise<LinearIssue[]>
+    startWork(identifier: string): Promise<LinearState | null>
+    linkPr(identifier: string, url: string): Promise<LinearState | null>
+  }
   memory: {
     list(query?: string): Promise<Memory[]>
     add(m: { type: MemoryType; content: string; pinned?: boolean }): Promise<Memory>

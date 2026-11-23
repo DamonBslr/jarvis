@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AgentEvent, JarvisApi, LearnedEvent } from '@shared/types'
+import type { AgentEvent, ApprovalRequest, JarvisApi, LearnedEvent } from '@shared/types'
 
 function subscribe<T extends unknown[]>(channel: string, cb: (...args: T) => void) {
   const listener = (_: unknown, ...args: unknown[]) => cb(...(args as T))
@@ -16,6 +16,22 @@ const api: JarvisApi = {
   onEvent: (cb) => subscribe<[string, AgentEvent]>('jarvis:event', cb),
   onLearned: (cb) => subscribe<[LearnedEvent]>('jarvis:learned', cb),
   route: (prompt, fallback) => ipcRenderer.invoke('route', prompt, fallback),
+  onApproval: (cb) => subscribe<[ApprovalRequest]>('jarvis:approval', cb),
+  respondApproval: (id, decision) => ipcRenderer.invoke('approval:respond', id, decision),
+  openExternal: (url) => ipcRenderer.invoke('openExternal', url),
+  git: {
+    status: (cwd) => ipcRenderer.invoke('git:status', cwd),
+    diff: (cwd, path) => ipcRenderer.invoke('git:diff', cwd, path),
+    pr: (cwd) => ipcRenderer.invoke('git:pr', cwd)
+  },
+  linear: {
+    status: () => ipcRenderer.invoke('linear:status'),
+    setKey: (key) => ipcRenderer.invoke('linear:setKey', key),
+    clearKey: () => ipcRenderer.invoke('linear:clearKey'),
+    myIssues: () => ipcRenderer.invoke('linear:myIssues'),
+    startWork: (id) => ipcRenderer.invoke('linear:startWork', id),
+    linkPr: (id, url) => ipcRenderer.invoke('linear:linkPr', id, url)
+  },
   pickFolder: () => ipcRenderer.invoke('pickFolder'),
   loadConversations: () => ipcRenderer.invoke('loadConversations'),
   saveConversation: (c) => ipcRenderer.invoke('saveConversation', c),

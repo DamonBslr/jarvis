@@ -25,6 +25,32 @@ Shortcuts: `⌘⇧Space` summon from anywhere · `⌘N` new chat · `Esc` stop r
 - **Autonomy**: `Read-only` (Claude plan mode / Codex read-only sandbox), `Edit files` (acceptEdits / workspace-write), `Full access` (bypass / no sandbox).
 - **Workspace**: folder the agent runs in (click the folder chip).
 
+## Workbench: Git + Linear (`⌘B`)
+
+Right-hand panel for the active chat's workspace:
+
+- **Git**: branch, ahead/behind, changed files (click for a diff), recent commits, the current PR with checks and review state (`gh`). One-click asks to the agent: **Commit · Open PR/Push · Sync · Review**.
+- **Linear**: your open assigned issues, sorted by state and priority. Clicking **Work on it →**:
+  1. opens a new chat in `Code · Git · Linear` mode, running Claude Code with **Edit files** autonomy, in the repo set for that team (the first use remembers the current workspace for the team);
+  2. moves the ticket to *In Progress*;
+  3. sends a starter prompt: read the issue, branch with Linear's `branchName`, plan, implement, test, commit, open a PR.
+- When a GitHub PR URL appears in that chat, a banner offers **Link PR**, which attaches the PR to the ticket, comments, and moves the ticket to *In Review*.
+
+The Linear API key is stored encrypted using the macOS keychain (`safeStorage`). Create one at https://linear.app/settings/account/security.
+
+## Agent tools + approvals (Jarvis MCP bridge)
+
+Every Claude Code / Codex run gets a built-in `jarvis` MCP server (`src/main/mcp/bridge.ts`, a zero-dependency stdio server launched with Electron-as-Node). It forwards calls to the app over loopback HTTP, protected by a token created at launch.
+
+| Tool | What it does |
+|---|---|
+| `approve` | Claude's `--permission-prompt-tool`. In **Edit files** mode, shell, git and network actions open a popup: **Allow** (`⌘↵`), **Deny** (`Esc`), or **Always allow \<tool\> in this chat**. |
+| `memory_search`, `remember` | Read and write your long-term memory |
+| `linear_my_issues`, `linear_get_issue` | Read Linear issues (allowed without a prompt) |
+| `linear_set_state`, `linear_comment` | Update Linear issues (asks first in Edit mode) |
+
+Codex gets the memory and Linear tools through `-c mcp_servers.jarvis.*`. `codex exec` can't stop to ask for approval, so its safety comes from its sandbox.
+
 ## Memory & knowledge
 
 Jarvis keeps a local SQLite store (`~/Library/Application Support/jarvis/jarvis.db`):
@@ -54,6 +80,7 @@ When the Jev server is offline, Jarvis uses keyword heuristics instead. The URL 
 JARVIS_DB_DIR=$(mktemp -d) npx tsx scripts/memory-test.mts          # memory, RAG, routing
 JARVIS_DB_DIR=$(mktemp -d) npx tsx scripts/memory-test.mts --learn  # + real learner call
 bun scripts/smoke.ts codex "prompt"                                  # provider adapters
+npx tsx scripts/integrations-test.mts /path/to/repo                  # git parser + Linear auth errors
 ```
 
 ## Layout
@@ -65,6 +92,9 @@ src/main/            Electron main: IPC, window, hotkey
   modes.ts           personas (+ Auto)
   classify/          Jev client + router
   memory/            SQLite store, embeddings, hybrid search, folder indexer, context builder, learner
+  mcp/               bridge.ts (stdio MCP server for agents) + server.ts (loopback endpoint, approvals)
+  integrations/      git.ts (status/diff/PR via git + gh), linear.ts (GraphQL)
+  secrets.ts         keychain-encrypted secrets
   store.ts           JSON persistence in ~/Library/Application Support/jarvis
 src/preload/         typed bridge (window.jarvis)
 src/renderer/        React UI
@@ -75,4 +105,3 @@ scripts/smoke.ts     headless adapter test: bun scripts/smoke.ts codex "prompt"
 ## Notes
 
 - Claude Code children load your normal `~/.claude` config (hooks, MCP servers, skills, CLAUDE.md). Your Linear MCP / skills are available to Jarvis automatically.
-- In headless mode Claude can't ask permission interactively; actions outside the chosen autonomy are denied, not prompted.
