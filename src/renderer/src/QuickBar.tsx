@@ -128,7 +128,7 @@ export function QuickBar() {
   useEffect(
     () =>
       api.onApproval((req) => {
-        if (alwaysAllow.current.has(req.toolName)) void api.respondApproval(req.requestId, { behavior: 'allow' })
+        if (!req.connect && alwaysAllow.current.has(req.toolName)) void api.respondApproval(req.requestId, { behavior: 'allow' })
         else setApprovals((q) => [...q, req])
       }),
     []
@@ -145,7 +145,7 @@ export function QuickBar() {
       if (!always) return rest
       alwaysAllow.current.add(head.toolName)
       return rest.filter((r) => {
-        const covered = r.toolName === head.toolName
+        const covered = !r.connect && r.toolName === head.toolName
         if (covered) void api.respondApproval(r.requestId, { behavior: 'allow' })
         return !covered
       })

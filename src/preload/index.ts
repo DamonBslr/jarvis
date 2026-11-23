@@ -87,6 +87,17 @@ const api: JarvisApi = {
     runNow: (id) => ipcRenderer.invoke('routines:runNow', id),
     onChanged: (cb) => subscribe<[]>('jarvis:routines-changed', cb)
   },
+  connections: {
+    list: () => ipcRenderer.invoke('connections:list'),
+    probe: (url) => ipcRenderer.invoke('connections:probe', url),
+    add: (input) => ipcRenderer.invoke('connections:add', input),
+    update: (id, patch) => ipcRenderer.invoke('connections:update', id, patch),
+    reconnect: (id, token) => ipcRenderer.invoke('connections:reconnect', id, token),
+    remove: (id) => ipcRenderer.invoke('connections:remove', id),
+    openBrowser: (id) => ipcRenderer.invoke('connections:openBrowser', id),
+    audit: (limit) => ipcRenderer.invoke('connections:audit', limit),
+    onChanged: (cb) => subscribe<[]>('jarvis:connections-changed', cb)
+  },
   updates: {
     state: () => ipcRenderer.invoke('updates:state'),
     check: () => ipcRenderer.invoke('updates:check'),

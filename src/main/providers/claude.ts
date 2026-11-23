@@ -58,9 +58,17 @@ export const claudeProvider: Provider = {
     const servers = { ...(req.mcp ? { jarvis: req.mcp } : {}), ...(req.extraMcp ?? {}) }
     if (Object.keys(servers).length) args.push('--mcp-config', JSON.stringify({ mcpServers: servers }))
     // Read-only tools never need a prompt; Linear writes and anything with side effects still ask in "Edit files" mode.
+    // connect_service shows its own Jarvis popup (with sign-in / key entry), so Claude must not prompt first.
     const allowed = [
       ...(req.mcp
-        ? ['mcp__jarvis__memory_search', 'mcp__jarvis__remember', 'mcp__jarvis__linear_my_issues', 'mcp__jarvis__linear_get_issue']
+        ? [
+            'mcp__jarvis__memory_search',
+            'mcp__jarvis__remember',
+            'mcp__jarvis__linear_my_issues',
+            'mcp__jarvis__linear_get_issue',
+            'mcp__jarvis__connections_list',
+            'mcp__jarvis__connect_service'
+          ]
         : []),
       ...(req.extraAllowedTools ?? [])
     ]

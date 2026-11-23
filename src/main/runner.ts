@@ -106,9 +106,9 @@ export async function startRun(req: RunRequest, sink: RunSink, owner: WebContent
 
   // Jarvis tools for the agent: memory + Linear always, approval popups for Claude when someone can answer.
   if (req.provider !== 'ollama') {
-    const groups = ['memory', 'linear', ...(req.provider === 'claude' && owner ? ['approve'] : [])]
+    const groups = ['memory', 'linear', 'connections', ...(req.provider === 'claude' && owner ? ['approve'] : [])]
     req = { ...req, mcp: bridgeLaunch(req.runId, groups) }
-    // Optional capabilities (browser, computer use, T3 Code), each behind a setting.
+    // Optional capabilities (browser, computer use, T3 Code behind settings; connected services always).
     const tools = await collectTools({ settings, req, env, interactive: !!owner }, (message) =>
       send({ kind: 'log', message })
     )

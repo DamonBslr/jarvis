@@ -123,12 +123,26 @@ function launcherFile(dir: string): string {
   return file
 }
 
+/** Jarvis's persistent browser profile (logins agents reuse). */
+export const browserProfileDir = () => join(app.getPath('userData'), 'browser-profile')
+
+/** The Chrome binary agents' browser runs on, for opening the profile by hand (logging in). */
+export function browserExecutable(env: NodeJS.ProcessEnv): string | null {
+  try {
+    const args = browserArgs(env, playwrightCli())
+    const i = args.indexOf('--executable-path')
+    return i >= 0 ? args[i + 1] : null
+  } catch {
+    return null
+  }
+}
+
 export function browserTools(ctx: ToolContext): ToolContribution | null {
   if (!ctx.settings.browserTool) return null
 
   const cli = playwrightCli()
   const userData = app.getPath('userData')
-  const profile = join(userData, 'browser-profile')
+  const profile = browserProfileDir()
   const outputDir = join(userData, 'browser-output')
   // Unattended routines stay headless: no Chrome window popping up while you work.
   const visible = ctx.settings.browserVisible && ctx.interactive

@@ -194,9 +194,86 @@ export interface ApprovalRequest {
   runId: string
   toolName: string
   input: unknown
+  /** Set when the agent asks to connect a new service; the dialog shows a connect prompt instead of a tool call. */
+  connect?: {
+    name: string
+    url: string
+    kind: ConnectionKind
+    /** e.g. "Sign in on auth.example.com" — what happens after Allow. */
+    action: string
+    /** Ask the user for an API key/token in the dialog. It goes to the vault, never to the agent. */
+    secretLabel?: string
+  }
 }
 
-export type ApprovalDecision = { behavior: 'allow' } | { behavior: 'deny'; message?: string }
+export type ApprovalDecision = { behavior: 'allow'; secret?: string } | { behavior: 'deny'; message?: string }
+
+/**
+ * A service Jarvis's agents can use with the user's access.
+ *  - oauth:   remote MCP server behind OAuth 2.1 (Jarvis registers itself, you sign in once, tokens refresh)
+ *  - token:   remote MCP server behind an API key / bearer token you paste once
+ *  - open:    remote MCP server without auth
+ *  - browser: a website you logged into once in Jarvis's browser profile (for sites without an API)
+ */
+export type ConnectionKind = 'oauth' | 'token' | 'open' | 'browser'
+
+/** What agents may do: only read-only tools, writes ask you each time, or writes run on their own. */
+export type ConnectionPolicy = 'read' | 'ask' | 'auto'
+
+export interface Connection {
+  /** Also the MCP server name agents see (tools become mcp__<id>__<tool>). */
+  id: string
+  name: string
+  kind: ConnectionKind
+  /** MCP endpoint, or the site for browser logins. */
+  url: string
+  policy: ConnectionPolicy
+  /** token kind: header carrying the key (default Authorization, sent as "Bearer <key>"). */
+  header?: string
+  /** What it is / when to use it; shown to agents. */
+  notes?: string
+  createdAt: number
+  lastUsedAt?: number
+}
+
+export interface ConnectionStatus extends Connection {
+  state: 'connected' | 'needs-auth' | 'error' | 'unchecked'
+  detail?: string
+  tools?: { name: string; readOnly: boolean }[]
+  /** Who Jarvis acts as (email/name from the token), when known. */
+  account?: string
+  /** OAuth: where you'd revoke Jarvis's access. */
+  issuer?: string
+  expiresAt?: number
+}
+
+export interface ConnectionAuditEntry {
+  at: number
+  connection: string
+  tool: string
+  runId: string
+  outcome: 'ok' | 'error' | 'denied'
+  detail?: string
+}
+
+export interface NewConnection {
+  url: string
+  name?: string
+  /** Omit to detect (oauth / token / open) from the server. */
+  kind?: ConnectionKind
+  policy?: ConnectionPolicy
+  token?: string
+  header?: string
+  notes?: string
+}
+
+export interface ConnectionProbe {
+  kind: 'oauth' | 'token' | 'open'
+  /** Suggested display name (from the server's metadata). */
+  name?: string
+  /** OAuth: the sign-in host. */
+  issuer?: string
+}
 
 export interface Conversation {
   id: string
@@ -411,6 +488,21 @@ export interface JarvisApi {
     save(r: Routine): Promise<void>
     remove(id: string): Promise<void>
     runNow(id: string): Promise<void>
+    onChanged(cb: () => void): () => void
+  }
+  connections: {
+    list(): Promise<ConnectionStatus[]>
+    /** Look at an MCP URL: OAuth, needs a key, or open. */
+    probe(url: string): Promise<ConnectionProbe>
+    /** Adds the connection; for OAuth this opens your browser and resolves after you sign in. */
+    add(input: NewConnection): Promise<ConnectionStatus>
+    update(id: string, patch: Partial<Pick<Connection, 'name' | 'policy' | 'notes'>>): Promise<void>
+    /** Sign in again (OAuth) or replace the key (token). */
+    reconnect(id: string, token?: string): Promise<ConnectionStatus>
+    remove(id: string): Promise<void>
+    /** Open the site in Jarvis's browser profile so you can log in. */
+    openBrowser(id: string): Promise<void>
+    audit(limit?: number): Promise<ConnectionAuditEntry[]>
     onChanged(cb: () => void): () => void
   }
   updates: {
