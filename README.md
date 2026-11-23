@@ -23,8 +23,9 @@ Shortcuts (change in Settings → Shortcuts):
 |---|---|
 | `⌥Space` | quick bar — floating Spotlight-style ask from anywhere |
 | `⌥⇧Space` | talk — quick bar opens listening |
+| `⌥⇧L` | live conversation — hands-free voice loop in the main window (press again to end) |
 | `⌘⇧Space` | main window |
-| `⌘N` / `Esc` / `⌘B` | new chat / stop run / workbench |
+| `⌘N` / `Esc` / `⌘B` / `⌘D` | new chat / stop run / workbench / dictate into the composer |
 
 Jarvis lives in the menu bar (ring icon; dashed while an agent works). Closing the window keeps it running; quit from the menu or `⌘Q`. Settings → App → *Menu bar only* hides the Dock icon.
 
@@ -92,6 +93,8 @@ When the Jev server is offline, Jarvis uses keyword heuristics instead. The URL 
 
 - **Speech-to-text**: whisper.cpp (`whisper-cli`) + a ggml model. Settings → Voice → *Install* builds whisper-cli from source into `~/Library/Application Support/Jarvis/whisper` (works without Homebrew; needs Xcode tools and `cmake` or `uv`). Or `brew install whisper-cpp` — anything on your shell PATH is picked up. *Download* fetches the model (default `base`, 142 MB, multilingual). Warm transcription of a sentence is ~0.3 s on Apple Silicon.
 - **Push-to-talk**: `⌥⇧Space` or the mic button. Recording stops after ~1.2 s of silence (or click again). The transcript is sent as the prompt with a "keep it short" hint.
+- **Dictation**: the mic button in the main composer (or `⌘D`) records until you pause, then puts the transcript in the message box to edit before sending.
+- **Live mode**: the waveform button, `⌥⇧L`, the menu bar, or "Jarvis, live mode" (with the wake word on). A hands-free loop in the current chat: it listens, sends what you said when you pause (~0.9 s), reads the answer aloud sentence by sentence as it streams (code blocks stay on screen), then listens again. The agent gets a "spoken conversation" hint, so answers stay short. `Esc` or *Interrupt* stops the answer and cancels the run; `Esc` again, *End*, or saying "stop live mode" / "goodbye" ends it. It also ends after 3 quiet minutes. Approvals still pop up, and Jarvis says so. The mic is ignored while Jarvis speaks so it doesn't hear itself; with headphones, turn on Settings → Voice → *interrupt by talking* to cut it off just by speaking. Keeps running when the window is hidden.
 - **Spoken replies**: when you spoke, the answer is read with macOS `say` (code and links skipped). `Esc` stops it. Pick a voice in Settings.
 - **Wake word** (off by default): Settings → Voice → *Listen for "Jarvis"*, or the menu-bar toggle. An energy VAD cuts speech into ≤6 s clips; each is transcribed locally and only acted on if it starts with "Jarvis…" / "Hey Jarvis…". "Jarvis, what's on my board?" runs immediately; "Jarvis" alone opens the bar listening. Paused while Jarvis is speaking or the bar is open. Audio is never stored or uploaded; macOS shows the mic indicator while it's on.
 

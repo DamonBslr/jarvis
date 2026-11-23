@@ -3,6 +3,7 @@
 
 const RATE = 16000
 const FRAME = 2048 // 128 ms at 16 kHz
+export const FRAME_MS = (FRAME / RATE) * 1000
 
 export class Mic {
   private constructor(
@@ -43,7 +44,7 @@ export class Mic {
   }
 }
 
-function concat(chunks: Float32Array[]): Float32Array {
+export function concat(chunks: Float32Array[]): Float32Array {
   const out = new Float32Array(chunks.reduce((n, c) => n + c.length, 0))
   let o = 0
   for (const c of chunks) {
@@ -78,7 +79,7 @@ export function encodeWav(samples: Float32Array): ArrayBuffer {
 }
 
 /** Speech threshold that adapts to the room's noise floor. */
-class Vad {
+export class Vad {
   floor = 0.004
   isSpeech(rms: number) {
     const speech = rms > Math.max(0.012, this.floor * 3.2)

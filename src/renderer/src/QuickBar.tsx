@@ -39,6 +39,7 @@ export function QuickBar() {
   const wakeMic = useRef<Mic | null>(null)
   const voiceRef = useRef<VoiceState>('idle')
   const speakingRef = useRef(false)
+  const liveRef = useRef(false) // main window is in live mode: it owns the mic conversation
   const visible = useRef(false)
   voiceRef.current = voiceState
   convRef.current = conv
@@ -55,7 +56,8 @@ export function QuickBar() {
       api.voice.onSpeaking((on) => {
         speakingRef.current = on
         setSpeaking(on)
-      })
+      }),
+      api.voice.onLive((on) => (liveRef.current = on))
     ]
     const onVis = () => (visible.current = document.visibilityState === 'visible')
     document.addEventListener('visibilitychange', onVis)
@@ -277,7 +279,8 @@ export function QuickBar() {
         (wav) => api.voice.transcribe(wav),
         (rest) => void api.voice.wake(rest),
         // Don't trigger on our own voice, or while the bar is already in use.
-        () => speakingRef.current || voiceRef.current !== 'idle' || document.visibilityState === 'visible'
+        () =>
+          speakingRef.current || liveRef.current || voiceRef.current !== 'idle' || document.visibilityState === 'visible'
       )
     })()
     return () => {

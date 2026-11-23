@@ -603,6 +603,145 @@ kbd {
   font-size: 11px;
 }
 
+/* Voice: dictation + live mode */
+.voice-btn {
+  --level: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 0;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: none;
+  color: var(--faint);
+  transition: color 0.15s, background 0.15s, box-shadow 90ms linear;
+}
+.voice-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--raised);
+}
+.voice-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.voice-btn.on {
+  background: var(--accent);
+  color: var(--accent-ink);
+  opacity: 1;
+}
+.voice-btn.listening {
+  box-shadow: 0 0 0 calc(2px + var(--level) * 6px) rgba(90, 209, 230, 0.25);
+}
+.voice-btn.transcribing {
+  animation: pulse 0.8s ease-in-out infinite;
+}
+.voice-note {
+  max-width: 780px;
+  margin: 0 auto 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  color: var(--muted);
+  background: var(--raised);
+  border: 1px solid var(--line-soft);
+}
+.voice-note span {
+  flex: 1;
+}
+.live-bar {
+  max-width: 780px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 12px 12px 16px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid #2f5a63;
+  box-shadow: 0 0 0 4px rgba(90, 209, 230, 0.05);
+}
+.live-orb {
+  --level: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  flex: none;
+  background: radial-gradient(circle at 36% 34%, #d8fbff 0%, var(--accent) 42%, #12515c 78%, transparent 80%);
+  box-shadow: 0 0 14px rgba(90, 209, 230, 0.35);
+  transition: transform 90ms linear, box-shadow 90ms linear;
+}
+.live-orb.listening,
+.live-orb.hearing {
+  transform: scale(calc(1 + var(--level) * 0.4));
+  box-shadow: 0 0 calc(14px + var(--level) * 26px) rgba(90, 209, 230, calc(0.35 + var(--level) * 0.5));
+}
+.live-orb.listening {
+  opacity: 0.75;
+}
+.live-orb.transcribing {
+  animation: pulse 0.8s ease-in-out infinite;
+}
+.live-orb.thinking {
+  animation: orb-breathe 1.4s ease-in-out infinite;
+}
+.live-orb.speaking {
+  animation: live-speak 0.9s ease-in-out infinite;
+}
+@keyframes live-speak {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 12px rgba(90, 209, 230, 0.4);
+  }
+  30% {
+    transform: scale(1.14);
+    box-shadow: 0 0 28px rgba(90, 209, 230, 0.75);
+  }
+  60% {
+    transform: scale(1.04);
+  }
+}
+.live-text {
+  flex: 1;
+  min-width: 0;
+}
+.live-status {
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.live-heard {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.live-end {
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: var(--err);
+  border-radius: 9px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  flex: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-orb,
+  .voice-btn {
+    animation: none !important;
+    transition: none;
+  }
+}
+
 /* Settings */
 .overlay {
   position: fixed;

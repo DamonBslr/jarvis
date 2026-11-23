@@ -9,6 +9,8 @@ export interface TrayDeps {
   update(): UpdateState
   openMain(): void
   openQuick(voice: boolean): void
+  live(): boolean
+  toggleLive(): void
   openPanel(panel: 'settings' | 'routines'): void
   runRoutine(id: string): void
   setWakeWord(on: boolean): void
@@ -41,6 +43,10 @@ export async function refreshTray() {
   const items: MenuItemConstructorOptions[] = [
     { label: `Ask Jarvis…    ${pretty(s.quickHotkey)}`, click: () => deps.openQuick(false) },
     { label: `Talk to Jarvis    ${pretty(s.voiceHotkey)}`, click: () => deps.openQuick(true) },
+    {
+      label: deps.live() ? 'End live conversation' : `Live conversation    ${pretty(s.liveHotkey)}`,
+      click: () => deps.toggleLive()
+    },
     { label: `Open Jarvis    ${pretty(s.hotkey)}`, click: () => deps.openMain() },
     { type: 'separator' },
     {

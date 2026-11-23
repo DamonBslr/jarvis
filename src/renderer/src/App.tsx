@@ -18,6 +18,8 @@ import { ApprovalDialog } from './ApprovalDialog'
 import { Workbench } from './Workbench'
 import { RoutinesPanel } from './RoutinesPanel'
 import { applyEvent, historyFor, uid } from '@shared/chat'
+import { Mic, recordUtterance, type Utterance } from './voice'
+import { LIVE_SYSTEM_PROMPT, LiveLoop, type LivePhase } from './live'
 
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
 
@@ -64,6 +66,30 @@ export const prettyKey = (accel: string) =>
     .replace(/Shift/g, '⇧')
     .replace(/\+/g, '')
 
+const PHASE_LABEL: Record<LivePhase, string> = {
+  listening: 'Listening…',
+  hearing: 'Hearing you…',
+  transcribing: 'Transcribing…',
+  thinking: 'Working on it…',
+  speaking: 'Speaking…'
+}
+
+const errText = (err: unknown) =>
+  err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(err)
+
+const MicIcon = () => (
+  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+    <rect x="9" y="3" width="6" height="12" rx="3" fill="currentColor" />
+    <path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" />
+  </svg>
+)
+
+const LiveIcon = () => (
+  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+    <path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" />
+  </svg>
+)
+
 interface ActiveRun {
   runId: string
   convId: string
@@ -94,6 +120,14 @@ export function App() {
   const [dismissedPr, setDismissedPr] = useState<Set<string>>(new Set())
   const [linking, setLinking] = useState(false)
   const alwaysAllow = useRef(new Map<string, Set<string>>()) // convId -> tool names
+  const [live, setLive] = useState<{ phase: LivePhase; convId: string; heard?: string } | null>(null)
+  const [dictation, setDictation] = useState<'idle' | 'listening' | 'transcribing'>('idle')
+  const [level, setLevel] = useState(0)
+  const [voiceNote, setVoiceNote] = useState<string | null>(null)
+  const liveRef = useRef<LiveLoop | null>(null)
+  const liveStarting = useRef(false)
+  const dictationRef = useRef<Utterance | null>(null)
+  const dictating = useRef(false)
 
   const runsByRunId = useRef(new Map<string, ActiveRun>())
   const dirty = useRef(new Set<string>())
@@ -121,6 +155,10 @@ export function App() {
   // Another window (quick bar) or a routine wrote conversations: merge, never clobbering a chat running here.
   const runsRef = useRef(runs)
   runsRef.current = runs
+  const convsRef = useRef(convs)
+  convsRef.current = convs
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
   const reloadConversations = useCallback(async () => {
     const disk = await api.loadConversations()
     setConvs((prev) => {
@@ -203,6 +241,7 @@ export function App() {
         return
       }
       setApprovals((q) => [...q, req])
+      liveRef.current?.notify('I need your approval on screen.')
     })
   }, [])
 
@@ -272,7 +311,7 @@ export function App() {
     return c
   }, [settings, providers, active?.cwd])
 
-  const send = useCallback(async (text?: string, target?: Conversation) => {
+  const send = useCallback(async (text?: string, target?: Conversation, opts: { runId?: string; live?: boolean } = {}) => {
     const prompt = (text ?? draft).trim()
     if (!prompt || !settings) return
     const conv = target ?? active ?? newConversation()
@@ -286,7 +325,7 @@ export function App() {
       provider: conv.provider,
       createdAt: Date.now()
     }
-    const runId = uid()
+    const runId = opts.runId ?? uid()
     const run: ActiveRun = { runId, convId: conv.id, msgId: asstMsg.id, provider: conv.provider }
     runsByRunId.current.set(runId, run)
     setRuns((r) => ({ ...r, [conv.id]: run }))
@@ -341,11 +380,135 @@ export function App() {
       cwd: conv.cwd,
       sessionId: conv.sessions[provider],
       model: effectiveModel,
-      systemPrompt: mode?.systemPrompt || undefined,
+      systemPrompt: [mode?.systemPrompt, opts.live ? LIVE_SYSTEM_PROMPT : ''].filter(Boolean).join('\n\n') || undefined,
       history: provider === 'ollama' ? historyFor(conv) : undefined,
       autonomy: conv.autonomy
     })
   }, [draft, settings, active, newConversation, runs, modes, providers, updateConv])
+  const sendRef = useRef(send)
+  sendRef.current = send
+
+  // ---- voice: dictation into the composer, and live (hands-free) mode ----
+
+  const voiceReady = useCallback(async () => {
+    const status = await api.voice.status()
+    if (!status.whisper.found || !status.model.downloaded) {
+      setVoiceNote('Voice needs whisper.cpp and a model — set it up in Settings → Voice.')
+      return false
+    }
+    if (!(await api.voice.requestMic())) {
+      setVoiceNote('Microphone access is off for Jarvis (System Settings → Privacy & Security → Microphone).')
+      return false
+    }
+    return true
+  }, [])
+
+  /** Click (or ⌘D) to talk, stops on a pause or a second click; the transcript lands in the composer to edit. */
+  const dictate = useCallback(async () => {
+    if (liveRef.current) return
+    if (dictationRef.current) return dictationRef.current.stop()
+    if (dictating.current) return
+    dictating.current = true
+    setVoiceNote(null)
+    let mic: Mic | null = null
+    try {
+      if (!(await voiceReady())) return
+      void api.voice.stopSpeaking()
+      mic = await Mic.open()
+      setDictation('listening')
+      const u = recordUtterance(mic, { onLevel: setLevel })
+      dictationRef.current = u
+      const wav = await u.done
+      dictationRef.current = null
+      setLevel(0)
+      mic.close()
+      mic = null
+      if (!wav) return
+      setDictation('transcribing')
+      const text = await api.voice.transcribe(wav)
+      if (text) setDraft((d) => (d.trim() ? `${d.trimEnd()} ` : '') + text)
+      else setVoiceNote("Didn't catch that.")
+    } catch (err) {
+      setVoiceNote(errText(err))
+    } finally {
+      mic?.close()
+      dictationRef.current = null
+      dictating.current = false
+      setDictation('idle')
+      setLevel(0)
+      inputRef.current?.focus()
+    }
+  }, [voiceReady])
+
+  const stopLive = useCallback((reason?: string) => liveRef.current?.end(reason), [])
+
+  /** Hands-free loop in the active chat (or a new one if it's busy): listen, answer out loud, listen again. */
+  const startLive = useCallback(async () => {
+    if (liveRef.current || liveStarting.current || !settingsRef.current) return
+    liveStarting.current = true
+    setVoiceNote(null)
+    dictationRef.current?.cancel()
+    try {
+      if (!(await voiceReady())) return
+      const cur = convsRef.current.find((c) => c.id === activeId)
+      const conv = cur && !runsRef.current[cur.id] ? cur : newConversation()
+      if (!conv) return
+      const convId = conv.id
+      setActiveId(convId)
+      void api.voice.stopSpeaking()
+      setLive({ phase: 'listening', convId })
+      liveRef.current = await LiveLoop.start(
+        {
+          transcribe: (wav) => api.voice.transcribe(wav),
+          send: (text, runId) => {
+            const c = convsRef.current.find((x) => x.id === convId)
+            if (!c || runsRef.current[c.id]) return false
+            void sendRef.current(text, c, { runId, live: true })
+            return true
+          },
+          cancel: (runId) => void api.cancel(runId),
+          onEvent: api.onEvent,
+          say: (t) => api.voice.say(t),
+          stopSpeaking: () => void api.voice.stopSpeaking(),
+          bargeIn: () => !!settingsRef.current?.liveBargeIn,
+          onPhase: (phase) => setLive((l) => l && { ...l, phase }),
+          onLevel: setLevel,
+          onHeard: (heard) => setLive((l) => l && { ...l, heard }),
+          onError: (msg) => setVoiceNote(errText(msg)),
+          onEnd: (reason) => {
+            liveRef.current = null
+            setLive(null)
+            setLevel(0)
+            void api.voice.setLive(false)
+            if (reason) setVoiceNote(reason)
+          }
+        },
+        'Listening.'
+      )
+      void api.voice.setLive(true)
+    } catch (err) {
+      setLive(null)
+      setVoiceNote(errText(err))
+    } finally {
+      liveStarting.current = false
+    }
+  }, [voiceReady, activeId, newConversation])
+
+  // Global hotkey, tray, or "Jarvis, live mode".
+  useEffect(
+    () =>
+      api.voice.onLiveToggle((start) => {
+        if (start ?? !liveRef.current) void startLive()
+        else stopLive()
+      }),
+    [startLive, stopLive]
+  )
+
+  // A deleted live chat ends the session; so does closing the window.
+  useEffect(() => {
+    if (live && !convs.some((c) => c.id === live.convId)) stopLive()
+  }, [convs, live, stopLive])
+  useEffect(() => () => liveRef.current?.end(), [])
 
   /** "Work on it": new Code-mode chat bound to the ticket, in the team's repo, ticket moved to In Progress. */
   const startTicket = useCallback(
@@ -408,13 +571,23 @@ export function App() {
       } else if (e.metaKey && e.key.toLowerCase() === 'n') {
         e.preventDefault()
         newConversation()
+      } else if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'd') {
+        e.preventDefault()
+        void dictate()
+      } else if (e.key === 'Escape' && liveRef.current) {
+        // First Esc stops the answer, the next ends live mode.
+        const phase = liveRef.current.current
+        if (phase === 'thinking' || phase === 'speaking') liveRef.current.interrupt()
+        else stopLive()
+      } else if (e.key === 'Escape' && dictationRef.current) {
+        dictationRef.current.cancel()
       } else if (e.key === 'Escape' && activeRun) {
         cancel()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [newConversation, cancel, activeRun])
+  }, [newConversation, cancel, activeRun, dictate, stopLive])
 
   const removeConversation = async (id: string) => {
     const r = runs[id]
@@ -595,6 +768,7 @@ export function App() {
               </p>
               <p className="hint">
                 <kbd>{prettyKey(settings.quickHotkey)}</kbd> quick ask · <kbd>{prettyKey(settings.voiceHotkey)}</kbd> talk ·{' '}
+                <kbd>{prettyKey(settings.liveHotkey)}</kbd> live conversation · <kbd>⌘D</kbd> dictate ·{' '}
                 <kbd>{prettyKey(settings.hotkey)}</kbd> this window · <kbd>Esc</kbd> stops a run
               </p>
             </div>
@@ -621,33 +795,91 @@ export function App() {
         )}
 
         <footer className="composer">
-          <div className="composer-box">
-            <textarea
-              ref={inputRef}
-              value={draft}
-              autoFocus
-              rows={1}
-              placeholder={
-                active ? `Message ${PROVIDER_LABEL[active.provider]} in ${basename(active.cwd)}…` : 'Ask Jarvis…'
-              }
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                  e.preventDefault()
-                  void send()
+          {voiceNote && (
+            <div className="voice-note">
+              <span>{voiceNote}</span>
+              <button className="link" onClick={() => setVoiceNote(null)} title="Dismiss">
+                ×
+              </button>
+            </div>
+          )}
+          {live ? (
+            <div className={`live-bar ${live.phase}`}>
+              <span className={`live-orb ${live.phase}`} style={{ ['--level' as string]: level.toFixed(2) }} />
+              <div className="live-text">
+                <div className="live-status">
+                  {PHASE_LABEL[live.phase]}
+                  {live.convId !== activeId && (
+                    <button className="link" onClick={() => setActiveId(live.convId)}>
+                      back to live chat
+                    </button>
+                  )}
+                </div>
+                <div className="live-heard">
+                  {live.heard ? `“${live.heard}”` : 'Just talk. Say “stop live mode” or press Esc to end.'}
+                </div>
+              </div>
+              {(live.phase === 'thinking' || live.phase === 'speaking') && (
+                <button className="ghost" onClick={() => liveRef.current?.interrupt()} title="Stop the answer and listen (Esc)">
+                  Interrupt
+                </button>
+              )}
+              <button className="live-end" onClick={() => stopLive()} title="End live mode">
+                End
+              </button>
+            </div>
+          ) : (
+            <div className="composer-box">
+              <textarea
+                ref={inputRef}
+                value={draft}
+                autoFocus
+                rows={1}
+                placeholder={
+                  dictation === 'listening'
+                    ? 'Listening… pause or click the mic when done'
+                    : dictation === 'transcribing'
+                      ? 'Transcribing…'
+                      : active
+                        ? `Message ${PROVIDER_LABEL[active.provider]} in ${basename(active.cwd)}…`
+                        : 'Ask Jarvis…'
                 }
-              }}
-            />
-            {activeRun ? (
-              <button className="stop" onClick={cancel} title="Stop (Esc)">
-                ■
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault()
+                    void send()
+                  }
+                }}
+              />
+              <button
+                className={`voice-btn ${dictation !== 'idle' ? 'on' : ''} ${dictation}`}
+                style={{ ['--level' as string]: level.toFixed(2) }}
+                onClick={() => void dictate()}
+                disabled={dictation === 'transcribing'}
+                title={dictation === 'listening' ? 'Done talking' : 'Dictate (⌘D)'}
+              >
+                <MicIcon />
               </button>
-            ) : (
-              <button className="send" onClick={() => void send()} disabled={!draft.trim()} title="Send (Enter)">
-                ↑
+              <button
+                className="voice-btn"
+                onClick={() => void startLive()}
+                disabled={dictation !== 'idle'}
+                title={`Live conversation (${prettyKey(settings.liveHotkey)})`}
+              >
+                <LiveIcon />
               </button>
-            )}
-          </div>
+              {activeRun ? (
+                <button className="stop" onClick={cancel} title="Stop (Esc)">
+                  ■
+                </button>
+              ) : (
+                <button className="send" onClick={() => void send()} disabled={!draft.trim()} title="Send (Enter)">
+                  ↑
+                </button>
+              )}
+            </div>
+          )}
         </footer>
       </main>
 

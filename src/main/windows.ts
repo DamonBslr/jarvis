@@ -50,7 +50,8 @@ export function createMain() {
     show: false,
     titleBarStyle: 'hiddenInset',
     backgroundColor: '#0b0d10',
-    webPreferences: prefs()
+    // Live mode keeps listening and speaking while the window is hidden.
+    webPreferences: prefs({ backgroundThrottling: false })
   })
   main.once('ready-to-show', () => {
     if (!process.env.JARVIS_HIDDEN) main?.show()

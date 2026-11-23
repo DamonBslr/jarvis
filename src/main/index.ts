@@ -70,6 +70,24 @@ function registerHotkeys(s: Settings) {
   bind('main', s.hotkey, toggleMain)
   bind('quick', s.quickHotkey, toggleQuick)
   bind('voice', s.voiceHotkey, () => showQuick({ voice: true }))
+  bind('live', s.liveHotkey, () => toggleLive())
+}
+
+// ---- live mode ------------------------------------------------------------
+// The loop itself runs in the main window's renderer (mic, VAD, streaming speech); main only routes
+// the toggle and remembers whether it's on so the wake word pauses and the tray shows it.
+
+let liveOn = false
+const LIVE_PHRASE = /^(?:(?:start|enter|go|turn on|switch to)\s+)?(?:live|conversation)(?:\s+mode)?\W*$|^let'?s\s+(?:talk|chat)\W*$/i
+
+function toggleLive(start?: boolean) {
+  const want = start ?? !liveOn
+  if (!want) return void getMain()?.webContents.send('jarvis:live-toggle', false)
+  hideQuick()
+  const w = showMain()
+  const send = () => setTimeout(() => w.webContents.send('jarvis:live-toggle', true), 300)
+  if (w.webContents.isLoading()) w.webContents.once('did-finish-load', send)
+  else send()
 }
 
 async function applySettings(s: Settings) {
@@ -286,7 +304,16 @@ function registerIpc() {
   ipcMain.handle('voice:stopSpeaking', () => voice.stopSpeaking())
   ipcMain.handle('voice:downloadModel', (_e, name: string) => voice.downloadModel(name, voiceProgress))
   ipcMain.handle('voice:installWhisper', () => voice.installWhisper(voiceProgress))
-  ipcMain.handle('voice:wake', (_e, rest: string) => showQuick({ voice: !rest.trim(), prompt: rest.trim() || undefined }))
+  ipcMain.handle('voice:say', async (_e, text: string) => voice.say(text, await store.getSettings()))
+  ipcMain.handle('voice:wake', (_e, rest: string) => {
+    if (LIVE_PHRASE.test(rest.trim())) return toggleLive(true)
+    showQuick({ voice: !rest.trim(), prompt: rest.trim() || undefined })
+  })
+  ipcMain.handle('voice:setLive', (_e, on: boolean) => {
+    liveOn = on
+    broadcast('jarvis:live', on)
+    void refreshTray()
+  })
 
   // Routines
   ipcMain.handle('routines:list', async () =>
@@ -381,6 +408,8 @@ app.whenReady().then(async () => {
     update: updateState,
     openMain: () => showMain(true),
     openQuick: (v) => showQuick({ voice: v }),
+    live: () => liveOn,
+    toggleLive: () => toggleLive(),
     openPanel,
     runRoutine: (id) => void routines.runRoutine(id, routineHooks).finally(() => broadcast('jarvis:routines-changed')),
     setWakeWord: async (on) => {

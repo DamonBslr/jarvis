@@ -167,31 +167,71 @@ export async function transcribe(wav: Uint8Array, settings: Settings): Promise<s
   }
 }
 
-let speaking: ChildProcess | null = null
+// Spoken output is a queue so live mode can stream an answer sentence by sentence:
+// each chunk is one `say` process, played in order; the promise resolves when that chunk ends or is cut off.
+interface SayJob {
+  text: string
+  voice: string
+  done: () => void
+}
+const queue: SayJob[] = []
+let current: { child: ChildProcess; jobs: SayJob[] } | null = null
+let speakingNow = false
 let onSpeaking: (on: boolean) => void = () => {}
 export function setSpeakingListener(fn: (on: boolean) => void) {
   onSpeaking = fn
 }
 
-export function stopSpeaking() {
-  if (!speaking) return
-  speaking.kill('SIGTERM')
-  speaking = null
-  onSpeaking(false)
+function setSpeaking(on: boolean) {
+  if (speakingNow === on) return
+  speakingNow = on
+  onSpeaking(on)
 }
 
+function pump() {
+  if (current) return
+  if (!queue.length) return setSpeaking(false)
+  // Everything queued while the last chunk played goes out as one process: fewer gaps between sentences.
+  const voice = queue[0].voice
+  const n = queue.findIndex((j) => j.voice !== voice)
+  const jobs = queue.splice(0, n < 0 ? queue.length : n)
+  const child = spawn('say', [...(voice ? ['-v', voice] : []), '-f', '-'], { stdio: ['pipe', 'ignore', 'ignore'] })
+  current = { child, jobs }
+  setSpeaking(true)
+  child.stdin.on('error', () => {}) // killed before stdin drained
+  child.stdin.end(jobs.map((j) => j.text).join('\n'))
+  const finish = () => {
+    if (current?.child !== child) return
+    current = null
+    for (const j of jobs) j.done()
+    pump()
+  }
+  child.on('close', finish)
+  child.on('error', finish)
+}
+
+export function stopSpeaking() {
+  for (const job of queue.splice(0)) job.done()
+  if (current) {
+    const { child, jobs } = current
+    current = null
+    child.kill('SIGTERM')
+    for (const j of jobs) j.done()
+  }
+  setSpeaking(false)
+}
+
+/** Append to what's being said. Resolves when this chunk finished playing (or speech was stopped). */
+export function say(text: string, settings: Settings): Promise<void> {
+  return new Promise((resolve) => {
+    if (!text.trim() || process.platform !== 'darwin') return resolve()
+    queue.push({ text, voice: settings.ttsVoice, done: resolve })
+    pump()
+  })
+}
+
+/** Replace whatever is being said. */
 export function speak(text: string, settings: Settings) {
   stopSpeaking()
-  if (!text.trim() || process.platform !== 'darwin') return
-  const args = settings.ttsVoice ? ['-v', settings.ttsVoice] : []
-  const child = spawn('say', [...args, '-f', '-'], { stdio: ['pipe', 'ignore', 'ignore'] })
-  child.stdin.end(text)
-  child.on('close', () => {
-    if (speaking === child) {
-      speaking = null
-      onSpeaking(false)
-    }
-  })
-  speaking = child
-  onSpeaking(true)
+  void say(text, settings)
 }

@@ -68,12 +68,16 @@ const api: JarvisApi = {
     requestMic: () => ipcRenderer.invoke('voice:requestMic'),
     transcribe: (wav) => ipcRenderer.invoke('voice:transcribe', wav),
     speak: (t) => ipcRenderer.invoke('voice:speak', t),
+    say: (t) => ipcRenderer.invoke('voice:say', t),
     stopSpeaking: () => ipcRenderer.invoke('voice:stopSpeaking'),
     onSpeaking: (cb) => subscribe<[boolean]>('jarvis:speaking', cb),
     downloadModel: (name) => ipcRenderer.invoke('voice:downloadModel', name),
     installWhisper: () => ipcRenderer.invoke('voice:installWhisper'),
     onProgress: (cb) => subscribe<[VoiceProgress]>('jarvis:voice-progress', cb),
-    wake: (rest) => ipcRenderer.invoke('voice:wake', rest)
+    wake: (rest) => ipcRenderer.invoke('voice:wake', rest),
+    setLive: (on) => ipcRenderer.invoke('voice:setLive', on),
+    onLive: (cb) => subscribe<[boolean]>('jarvis:live', cb),
+    onLiveToggle: (cb) => subscribe<[boolean | undefined]>('jarvis:live-toggle', cb)
   },
   routines: {
     list: () => ipcRenderer.invoke('routines:list'),

@@ -27,6 +27,8 @@ export const DEFAULT_SETTINGS: Settings = {
   speakReplies: true,
   ttsVoice: '',
   wakeWord: false,
+  liveHotkey: 'Alt+Shift+L',
+  liveBargeIn: false,
   menuBarOnly: false,
   autoUpdate: true
 }

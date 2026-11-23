@@ -240,6 +240,10 @@ export interface Settings {
   ttsVoice: string
   /** Keep the mic open and react to "Jarvis …" (all transcription stays local). */
   wakeWord: boolean
+  /** Global shortcut that starts/ends a hands-free live conversation in the main window. */
+  liveHotkey: string
+  /** Live mode: talking over Jarvis interrupts it (needs headphones, or it hears itself). */
+  liveBargeIn: boolean
   /** Hide the Dock icon; Jarvis lives in the menu bar. */
   menuBarOnly: boolean
   /** Download and install updates automatically (packaged app only). */
@@ -356,7 +360,10 @@ export interface JarvisApi {
     status(model?: string): Promise<VoiceStatus>
     requestMic(): Promise<boolean>
     transcribe(wav: ArrayBuffer): Promise<string>
+    /** Replace whatever is being said. */
     speak(text: string): Promise<void>
+    /** Queue after what's being said; resolves when this chunk has played (or speech was stopped). */
+    say(text: string): Promise<void>
     stopSpeaking(): Promise<void>
     onSpeaking(cb: (on: boolean) => void): () => void
     downloadModel(name: string): Promise<void>
@@ -364,6 +371,11 @@ export interface JarvisApi {
     onProgress(cb: (p: VoiceProgress) => void): () => void
     /** Wake word heard: text after "Jarvis". */
     wake(rest: string): Promise<void>
+    /** The main window reports live mode on/off (pauses the wake word, updates the tray). */
+    setLive(on: boolean): Promise<void>
+    onLive(cb: (on: boolean) => void): () => void
+    /** Hotkey / tray / "Jarvis, live mode" asked the main window to start or end live mode. */
+    onLiveToggle(cb: (start?: boolean) => void): () => void
   }
   routines: {
     list(): Promise<(Routine & { running?: boolean })[]>

@@ -160,7 +160,18 @@ function VoiceTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
           <small>
             Keeps the microphone open so you can say “Jarvis, …” anytime. Speech is cut into short clips and
             transcribed on this Mac only; nothing is recorded or sent anywhere. macOS shows the mic indicator while
-            it's on.
+            it's on. Say “Jarvis, live mode” to start a live conversation.
+          </small>
+        </div>
+      </label>
+
+      <label className="row check">
+        <input type="checkbox" checked={s.liveBargeIn} onChange={(e) => setS({ ...s, liveBargeIn: e.target.checked })} />
+        <div>
+          <div>Live mode: interrupt by talking</div>
+          <small>
+            Talking over Jarvis stops its answer and cancels the run. Use headphones — through speakers Jarvis hears
+            itself. When off, press Esc or Interrupt instead; the mic is ignored while Jarvis speaks.
           </small>
         </div>
       </label>
@@ -394,6 +405,7 @@ export function SettingsPanel({
                 [
                   ['quick', 'quickHotkey', 'Quick bar'],
                   ['voice', 'voiceHotkey', 'Talk (quick bar + listen)'],
+                  ['live', 'liveHotkey', 'Live conversation (start / end)'],
                   ['main', 'hotkey', 'Main window']
                 ] as const
               ).map(([name, key, label]) => (
