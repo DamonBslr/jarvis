@@ -1,0 +1,38 @@
+appId: dev.damonbslr.jarvis
+productName: Jarvis
+copyright: Copyright © 2026 DamonBslr
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**
+  - package.json
+# Tray icons + whisper installer, read at runtime from process.resourcesPath.
+extraResources:
+  - from: resources
+    to: .
+# Agent CLIs spawn the MCP bridge with ELECTRON_RUN_AS_NODE; keep it a real file on disk.
+asarUnpack:
+  - out/main/bridge.js
+mac:
+  target:
+    - target: dmg
+      arch: arm64
+    - target: zip # the auto-update payload
+      arch: arm64
+  category: public.app-category.developer-tools
+  icon: build/icon.png
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: Jarvis listens when you talk to it. Speech is transcribed on this Mac with whisper.cpp and never uploaded.
+dmg:
+  title: Jarvis ${version}
+# Auto-update feed. `pnpm release` uploads dmg/zip + latest-mac.yml to a GitHub release (needs GH_TOKEN).
+publish:
+  provider: github
+  owner: DamonBslr
+  repo: jarvis
+  releaseType: release

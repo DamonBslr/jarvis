@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
-  AgentEvent,
   ApprovalDecision,
   ApprovalRequest,
   LinearIssue,
@@ -17,6 +16,8 @@ import { SettingsPanel } from './SettingsPanel'
 import { MemoryPanel } from './MemoryPanel'
 import { ApprovalDialog } from './ApprovalDialog'
 import { Workbench } from './Workbench'
+import { RoutinesPanel } from './RoutinesPanel'
+import { applyEvent, historyFor, uid } from '@shared/chat'
 
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
 
@@ -54,63 +55,20 @@ const AUTONOMY_LABEL: Record<RunRequest['autonomy'], string> = {
   full: 'Full access'
 }
 
-const uid = () => crypto.randomUUID().replace(/-/g, '').slice(0, 20)
 const basename = (p: string) => p.split('/').filter(Boolean).pop() ?? p
+export const prettyKey = (accel: string) =>
+  accel
+    .replace(/CommandOrControl|CmdOrCtrl|Command|Cmd/g, '⌘')
+    .replace(/Control|Ctrl/g, '⌃')
+    .replace(/Alt|Option/g, '⌥')
+    .replace(/Shift/g, '⇧')
+    .replace(/\+/g, '')
 
 interface ActiveRun {
   runId: string
   convId: string
   msgId: string
   provider: ProviderId
-}
-
-function applyEvent(msg: ChatMessage, ev: AgentEvent): ChatMessage {
-  const parts = [...msg.parts]
-  const last = parts[parts.length - 1]
-  switch (ev.kind) {
-    case 'text':
-    case 'thinking': {
-      const type = ev.kind
-      if (last && last.type === type) parts[parts.length - 1] = { ...last, text: last.text + ev.delta }
-      else parts.push({ type, text: ev.delta })
-      return { ...msg, parts }
-    }
-    case 'tool_start':
-      parts.push({ type: 'tool', id: ev.id, name: ev.name, input: ev.input, done: false })
-      return { ...msg, parts }
-    case 'tool_end':
-      return {
-        ...msg,
-        parts: parts.map((p) =>
-          p.type === 'tool' && p.id === ev.id ? { ...p, output: ev.output, isError: ev.isError, done: true } : p
-        )
-      }
-    case 'error':
-      return { ...msg, error: msg.error ? `${msg.error}\n${ev.message}` : ev.message }
-    case 'context':
-      return { ...msg, context: ev.items }
-    case 'done':
-      return {
-        ...msg,
-        costUsd: ev.costUsd,
-        // Close any tool cards the provider never reported a result for.
-        parts: parts.map((p) => (p.type === 'tool' && !p.done ? { ...p, done: true } : p))
-      }
-    default:
-      return msg
-  }
-}
-
-function historyFor(conv: Conversation) {
-  return conv.messages
-    .map((m) => ({
-      role: m.role,
-      content: m.parts
-        .filter((p) => p.type === 'text')
-        .map((p) => (p as { text: string }).text)
-        .join('')
-    }))
-    .filter((m) => m.content.trim())
 }
 
 export function App() {
@@ -123,6 +81,7 @@ export function App() {
   const [draft, setDraft] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [showMemory, setShowMemory] = useState(false)
+  const [showRoutines, setShowRoutines] = useState(false)
   const [showWorkbench, setShowWorkbench] = useState(() => {
     try {
       return localStorage.getItem('wb-open') !== '0'
@@ -158,6 +117,39 @@ export function App() {
     void refreshProviders()
     window.jarvisFocus(() => inputRef.current?.focus())
   }, [refreshProviders])
+
+  // Another window (quick bar) or a routine wrote conversations: merge, never clobbering a chat running here.
+  const runsRef = useRef(runs)
+  runsRef.current = runs
+  const reloadConversations = useCallback(async () => {
+    const disk = await api.loadConversations()
+    setConvs((prev) => {
+      const byId = new Map(prev.map((c) => [c.id, c]))
+      const merged = disk.map((d) => {
+        const local = byId.get(d.id)
+        if (!local) return d
+        if (runsRef.current[d.id] || local.updatedAt > d.updatedAt) return local
+        return d
+      })
+      const diskIds = new Set(disk.map((d) => d.id))
+      // Keep unsaved local chats (e.g. a fresh "New chat").
+      const localOnly = prev.filter((c) => !diskIds.has(c.id) && (c.messages.length === 0 || runsRef.current[c.id]))
+      return [...localOnly, ...merged].sort((a, b) => b.updatedAt - a.updatedAt)
+    })
+    return disk
+  }, [])
+
+  useEffect(() => {
+    const offs = [
+      api.onConversationsChanged(() => void reloadConversations()),
+      api.onOpenConversation((id) => {
+        void reloadConversations().then(() => setActiveId(id))
+      }),
+      api.onOpenPanel((panel) => (panel === 'routines' ? setShowRoutines(true) : setShowSettings(true))),
+      api.onSettingsChanged(setSettings)
+    ]
+    return () => offs.forEach((o) => o())
+  }, [reloadConversations])
 
   // Persist conversations that changed (debounced by React batching).
   useEffect(() => {
@@ -479,6 +471,8 @@ export function App() {
             >
               <span className={`dot ${runs[c.id] ? 'running' : ''}`} data-provider={c.provider} />
               <span className="conv-title">{c.title}</span>
+              {c.routineId && <span className="conv-tag" title="Created by a routine">routine</span>}
+              {c.quick && !c.routineId && <span className="conv-tag" title="Started from the quick bar">quick</span>}
               <button
                 className="conv-del"
                 title="Delete"
@@ -504,6 +498,9 @@ export function App() {
           </div>
           <button className="ghost" onClick={() => setShowMemory(true)}>
             Memory
+          </button>
+          <button className="ghost" onClick={() => setShowRoutines(true)}>
+            Routines
           </button>
           <button className="ghost" onClick={() => setShowSettings(true)}>
             Settings
@@ -597,7 +594,8 @@ export function App() {
                   'Runs on your machine through Claude Code, Codex and local Ollama models — using your own subscriptions.'}
               </p>
               <p className="hint">
-                <kbd>⌘⇧Space</kbd> summons Jarvis from anywhere · <kbd>Esc</kbd> stops a run
+                <kbd>{prettyKey(settings.quickHotkey)}</kbd> quick ask · <kbd>{prettyKey(settings.voiceHotkey)}</kbd> talk ·{' '}
+                <kbd>{prettyKey(settings.hotkey)}</kbd> this window · <kbd>Esc</kbd> stops a run
               </p>
             </div>
           ) : (
@@ -675,16 +673,30 @@ export function App() {
 
       {showMemory && <MemoryPanel onClose={() => setShowMemory(false)} />}
 
+      {showRoutines && (
+        <RoutinesPanel
+          settings={settings}
+          providers={providers}
+          onClose={() => setShowRoutines(false)}
+          onOpen={(id) => {
+            setShowRoutines(false)
+            void reloadConversations().then(() => setActiveId(id))
+          }}
+        />
+      )}
+
       {showSettings && (
         <SettingsPanel
           settings={settings}
           providers={providers}
           onClose={() => setShowSettings(false)}
           onSave={async (s) => {
-            await api.saveSettings(s)
+            const errors = await api.saveSettings(s)
             setSettings(s)
-            setShowSettings(false)
             void refreshProviders()
+            if (Object.keys(errors).length) return errors
+            setShowSettings(false)
+            return errors
           }}
         />
       )}

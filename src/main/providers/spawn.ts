@@ -93,7 +93,7 @@ export function stderrSummary(tail: string): string {
 export function runOnce(
   cmd: string,
   args: string[],
-  opts: { stdin: string; env: NodeJS.ProcessEnv; cwd: string; timeoutMs: number }
+  opts: { stdin?: string; env?: NodeJS.ProcessEnv; cwd?: string; timeoutMs: number }
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { cwd: opts.cwd, env: opts.env, stdio: ['pipe', 'pipe', 'pipe'] })
@@ -114,6 +114,6 @@ export function runOnce(
       if (code === 0) resolve(out)
       else reject(new Error(stderrSummary(err) || `${cmd} exited ${code}`))
     })
-    child.stdin.end(opts.stdin)
+    child.stdin.end(opts.stdin ?? '')
   })
 }

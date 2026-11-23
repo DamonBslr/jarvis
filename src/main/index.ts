@@ -1,227 +1,129 @@
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, shell } from 'electron'
-import { join } from 'node:path'
-import { stat } from 'node:fs/promises'
-import type { AgentEvent, ProviderId, RunRequest, Settings } from '@shared/types'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, session, shell, type WebContents } from 'electron'
+import { stat, writeFile } from 'node:fs/promises'
+import type { AgentEvent, ProviderId, Routine, RunRequest, Settings } from '@shared/types'
 import { loadShellEnv } from './shellEnv'
-import { claudeProvider } from './providers/claude'
-import { codexProvider } from './providers/codex'
-import { ollamaProvider } from './providers/ollama'
-import type { Provider, RunHandle } from './providers/types'
 import * as store from './store'
 import { MODES } from './modes'
 import { route } from './classify/router'
 import { jevHealth } from './classify/jev'
-import { buildContext } from './memory/context'
-import { learnFromTurn } from './memory/learn'
 import { probeEmbeddings } from './memory/embed'
 import * as mem from './memory/memories'
 import * as kb from './memory/knowledge'
-import { bridgeLaunch, respondApproval, startBridge } from './mcp/server'
+import { startBridge } from './mcp/server'
 import * as git from './integrations/git'
 import * as linear from './integrations/linear'
 import { getSecret, setSecret } from './secrets'
+import {
+  activeRuns,
+  answerApproval,
+  cancelAll,
+  cancelRun,
+  onActiveRunsChanged,
+  providerStatuses,
+  requestApproval,
+  startRun
+} from './runner'
+import {
+  broadcast,
+  createMain,
+  createQuick,
+  getMain,
+  getQuick,
+  hideQuick,
+  isAppUrl,
+  pinQuick,
+  resizeQuick,
+  setDockVisible,
+  showMain,
+  showQuick,
+  toggleMain,
+  toggleQuick
+} from './windows'
+import * as voice from './voice'
+import * as routines from './routines'
+import { checkForUpdates, initUpdater, installUpdate, updateState } from './updater'
+import { createTray, refreshTray, setTrayBusy } from './tray'
 
-const providers: Record<ProviderId, Provider> = {
-  claude: claudeProvider,
-  codex: codexProvider,
-  ollama: ollamaProvider
-}
+if (!app.requestSingleInstanceLock()) app.quit()
+app.on('second-instance', () => showMain(true))
 
-const runs = new Map<string, RunHandle>()
-/** Open approval requests: requestId -> runId (so ending a run denies its pending prompts). */
-const openApprovals = new Map<string, string>()
-let win: BrowserWindow | null = null
-let registeredHotkey: string | null = null
+// ---- hotkeys --------------------------------------------------------------
 
-// Vars a parent Claude Code / agent session sets for itself; children must not inherit them.
-const SESSION_VARS = [
-  'CLAUDECODE',
-  'CLAUDE_CODE_ENTRYPOINT',
-  'CLAUDE_CODE_SESSION_ID',
-  'CLAUDE_CODE_CHILD_SESSION',
-  'CLAUDE_CODE_SESSION_ATTENDED',
-  'CLAUDE_CODE_MESSAGING_SOCKET',
-  'CLAUDE_CODE_MESSAGING_TOKEN',
-  'CLAUDE_CODE_EXECPATH',
-  'CLAUDE_AGENT_SDK_VERSION',
-  'CLAUDE_PID'
-]
+const hotkeys = new Map<string, string>() // name -> registered accelerator
+const hotkeyErrors: Record<string, string> = {}
 
-function childEnv(base: NodeJS.ProcessEnv, provider: ProviderId, settings: Settings): NodeJS.ProcessEnv {
-  const env = { ...base }
-  for (const k of SESSION_VARS) delete env[k]
-  if (provider === 'claude' && settings.preferSubscription) {
-    // Any of these take precedence over the subscription (OAuth) login and bill per token
-    // or point at a different endpoint.
-    delete env.ANTHROPIC_API_KEY
-    delete env.ANTHROPIC_AUTH_TOKEN
-    delete env.ANTHROPIC_BASE_URL
-  }
-  return env
-}
-
-function createWindow() {
-  win = new BrowserWindow({
-    width: 1440,
-    height: 880,
-    minWidth: 760,
-    minHeight: 520,
-    show: false,
-    titleBarStyle: 'hiddenInset',
-    backgroundColor: '#0b0d10',
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true
-    }
-  })
-  win.once('ready-to-show', () => win?.show())
-
-  // Dev aid: JARVIS_SCREENSHOT=/tmp/x.png captures the window after load and quits.
-  const shot = process.env.JARVIS_SCREENSHOT
-  if (shot) {
-    win.webContents.once('did-finish-load', () => {
-      const autoclick = process.env.JARVIS_SCREENSHOT_AUTOCLICK
-      if (autoclick) {
-        setInterval(() => {
-          void win?.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(autoclick)})?.click()`)
-        }, 1500)
-      }
-      const prompt = process.env.JARVIS_SCREENSHOT_PROMPT
-      if (prompt) {
-        setTimeout(() => {
-          void win!.webContents.executeJavaScript(`(() => {
-            const ta = document.querySelector('textarea')
-            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, ${JSON.stringify(prompt)})
-            ta.dispatchEvent(new Event('input', { bubbles: true }))
-            setTimeout(() => document.querySelector('.send').click(), 100)
-          })()`)
-        }, 4000)
-      }
-      setTimeout(async () => {
-        const img = await win!.webContents.capturePage()
-        await import('node:fs/promises').then((fs) => fs.writeFile(shot, img.toPNG()))
-        app.quit()
-      }, Number(process.env.JARVIS_SCREENSHOT_DELAY ?? 2500))
-    })
-  }
-
-  // Links from model output open in the real browser; the app window never navigates away.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//.test(url)) void shell.openExternal(url)
-    return { action: 'deny' }
-  })
-  win.webContents.on('will-navigate', (e, url) => {
-    if (url !== win?.webContents.getURL()) e.preventDefault()
-  })
-
-  if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)
-  else void win.loadFile(join(__dirname, '../renderer/index.html'))
-
-  win.on('closed', () => (win = null))
-}
-
-function registerHotkey(accel: string) {
-  if (registeredHotkey) globalShortcut.unregister(registeredHotkey)
-  registeredHotkey = null
+function bind(name: string, accel: string, fn: () => void) {
+  const prev = hotkeys.get(name)
+  if (prev) globalShortcut.unregister(prev)
+  hotkeys.delete(name)
+  delete hotkeyErrors[name]
+  if (!accel) return
   try {
-    const ok = globalShortcut.register(accel, () => {
-      if (!win) return createWindow()
-      if (win.isFocused()) win.hide()
-      else {
-        win.show()
-        win.focus()
-        win.webContents.send('jarvis:focus-input')
-      }
-    })
-    if (ok) registeredHotkey = accel
+    if (globalShortcut.register(accel, fn)) hotkeys.set(name, accel)
+    else hotkeyErrors[name] = `${accel} is taken by another app`
   } catch {
-    /* invalid accelerator string */
+    hotkeyErrors[name] = `${accel} is not a valid shortcut`
   }
 }
+
+function registerHotkeys(s: Settings) {
+  bind('main', s.hotkey, toggleMain)
+  bind('quick', s.quickHotkey, toggleQuick)
+  bind('voice', s.voiceHotkey, () => showQuick({ voice: true }))
+}
+
+async function applySettings(s: Settings) {
+  registerHotkeys(s)
+  setDockVisible(!s.menuBarOnly)
+  getQuick()?.webContents.send('jarvis:settings-changed', s)
+  void refreshTray()
+}
+
+function openConversation(convId: string) {
+  hideQuick()
+  const w = showMain()
+  const send = () => setTimeout(() => w.webContents.send('jarvis:open-conversation', convId), 300)
+  if (w.webContents.isLoading()) w.webContents.once('did-finish-load', send)
+  else send()
+}
+
+function openPanel(panel: 'settings' | 'routines') {
+  const w = showMain()
+  const send = () => setTimeout(() => w.webContents.send('jarvis:open-panel', panel), 300)
+  if (w.webContents.isLoading()) w.webContents.once('did-finish-load', send)
+  else send()
+}
+
+const routineHooks: routines.RoutineHooks = {
+  conversationsChanged: () => broadcast('jarvis:conversations-changed'),
+  openConversation
+}
+
+// ---- IPC ------------------------------------------------------------------
 
 function registerIpc() {
-  ipcMain.handle('providers', async () => {
-    const [env, settings] = await Promise.all([loadShellEnv(), store.getSettings()])
-    return Promise.all(
-      (Object.keys(providers) as ProviderId[]).map((id) =>
-        providers[id].status({ env: childEnv(env, id, settings), settings })
-      )
-    )
-  })
+  ipcMain.handle('providers', () => providerStatuses())
 
   ipcMain.handle('run', async (e, req: RunRequest) => {
-    const provider = providers[req.provider]
+    const sender = e.sender
     const send = (ev: AgentEvent) => {
-      if (!e.sender.isDestroyed()) e.sender.send('jarvis:event', req.runId, ev)
+      if (!sender.isDestroyed()) sender.send('jarvis:event', req.runId, ev)
     }
-    if (!provider) return send({ kind: 'error', message: `Unknown provider ${req.provider}` })
-    if (runs.has(req.runId)) return
-
-    const dirOk = await stat(req.cwd).then((s) => s.isDirectory(), () => false)
-    if (!dirOk) {
-      send({ kind: 'error', message: `Workspace folder not found: ${req.cwd}` })
-      return send({ kind: 'done' })
-    }
-
-    const [env, settings] = await Promise.all([loadShellEnv(), store.getSettings()])
-
-    if (settings.useMemory) {
-      try {
-        const ctx = await buildContext(req.prompt, settings)
-        if (ctx) {
-          req = { ...req, context: ctx.text }
-          send({ kind: 'context', items: ctx.refs })
+    await startRun(
+      req,
+      {
+        emit: send,
+        learned: (ev) => {
+          if (!sender.isDestroyed()) sender.send('jarvis:learned', ev)
         }
-      } catch (err) {
-        send({ kind: 'log', message: `memory lookup failed: ${String(err)}` })
-      }
-    }
-
-    // Jarvis tools for the agent: memory + Linear always, approval popups for Claude.
-    if (req.provider !== 'ollama') {
-      const groups = ['memory', 'linear', ...(req.provider === 'claude' ? ['approve'] : [])]
-      req = { ...req, mcp: bridgeLaunch(req.runId, groups) }
-    }
-
-    // Collect the answer so the learner can look at the whole turn afterwards.
-    let answer = ''
-    let failed = false
-    const handle = provider.run(req, { env: childEnv(env, req.provider, settings), settings }, (ev) => {
-      if (ev.kind === 'text') answer += ev.delta
-      if (ev.kind === 'error') failed = true
-      send(ev)
-    })
-    runs.set(req.runId, handle)
-    void handle.finished.finally(() => {
-      runs.delete(req.runId)
-      for (const [reqId, rId] of openApprovals) {
-        if (rId === req.runId) {
-          openApprovals.delete(reqId)
-          respondApproval(reqId, { behavior: 'deny', message: 'Run ended' })
-        }
-      }
-      if (failed || !req.convId || !req.msgId) return
-      learnFromTurn(
-        { convId: req.convId, msgId: req.msgId, prompt: req.prompt, answer },
-        settings,
-        childEnv(env, 'claude', settings)
-      )
-        .then((learned) => {
-          if (learned && !e.sender.isDestroyed()) e.sender.send('jarvis:learned', learned)
-        })
-        .catch((err) => console.warn('[jarvis] learning failed:', err))
-    })
+      },
+      sender
+    )
   })
+  ipcMain.handle('cancel', (_e, runId: string) => cancelRun(runId))
 
   ipcMain.handle('route', async (_e, prompt: string, fallback: ProviderId) => {
-    const [env, settings] = await Promise.all([loadShellEnv(), store.getSettings()])
-    const statuses = await Promise.all(
-      (Object.keys(providers) as ProviderId[]).map((id) =>
-        providers[id].status({ env: childEnv(env, id, settings), settings })
-      )
-    )
+    const [statuses, settings] = await Promise.all([providerStatuses(), store.getSettings()])
     return route(
       prompt,
       MODES.filter((m) => m.id !== 'auto'),
@@ -231,10 +133,7 @@ function registerIpc() {
     )
   })
 
-  ipcMain.handle('approval:respond', (_e, requestId: string, decision) => {
-    openApprovals.delete(requestId)
-    respondApproval(requestId, decision)
-  })
+  ipcMain.handle('approval:respond', (_e, requestId: string, decision) => answerApproval(requestId, decision))
   ipcMain.handle('openExternal', (_e, url: string) => {
     if (/^https:\/\//.test(url)) return shell.openExternal(url)
   })
@@ -286,7 +185,7 @@ function registerIpc() {
   })
 
   // Memory + knowledge
-  const notifySources = () => win?.webContents.send('jarvis:sources-changed')
+  const notifySources = () => getMain()?.webContents.send('jarvis:sources-changed')
   ipcMain.handle('memory:list', async (_e, query?: string) => {
     if (!query?.trim()) return mem.listMemories()
     const settings = await store.getSettings()
@@ -334,54 +233,203 @@ function registerIpc() {
     }
   })
 
-  ipcMain.handle('cancel', (_e, runId: string) => runs.get(runId)?.cancel())
-
-  ipcMain.handle('pickFolder', async () => {
-    const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory', 'createDirectory'] })
+  ipcMain.handle('pickFolder', async (e) => {
+    const parent = BrowserWindow.fromWebContents(e.sender) ?? undefined
+    const r = await (parent
+      ? dialog.showOpenDialog(parent, { properties: ['openDirectory', 'createDirectory'] })
+      : dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] }))
     return r.canceled ? null : r.filePaths[0]
   })
 
+  // Conversations: tell the other windows when one changes so lists stay in sync.
+  const othersChanged = (sender: WebContents) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (w.webContents !== sender && !w.webContents.isDestroyed()) w.webContents.send('jarvis:conversations-changed')
+    }
+  }
   ipcMain.handle('loadConversations', () => store.loadConversations())
-  ipcMain.handle('saveConversation', (_e, c) => store.saveConversation(c))
-  ipcMain.handle('deleteConversation', (_e, id: string) => store.deleteConversation(id))
+  ipcMain.handle('saveConversation', async (e, c) => {
+    await store.saveConversation(c)
+    othersChanged(e.sender)
+  })
+  ipcMain.handle('deleteConversation', async (e, id: string) => {
+    await store.deleteConversation(id)
+    othersChanged(e.sender)
+  })
   ipcMain.handle('getSettings', () => store.getSettings())
   ipcMain.handle('saveSettings', async (_e, s: Settings) => {
     await store.saveSettings(s)
-    registerHotkey(s.hotkey)
+    await applySettings(s)
+    return { ...hotkeyErrors }
   })
+  ipcMain.handle('hotkeyErrors', () => ({ ...hotkeyErrors }))
   ipcMain.handle('modes', () => MODES)
+
+  // Quick bar
+  ipcMain.handle('quick:hide', () => hideQuick())
+  ipcMain.handle('quick:resize', (_e, h: number) => resizeQuick(h))
+  ipcMain.handle('quick:pin', (_e, pinned: boolean) => pinQuick(pinned))
+  ipcMain.handle('quick:openInMain', (_e, convId: string) => openConversation(convId))
+
+  // Voice
+  const voiceProgress = (p: unknown) => broadcast('jarvis:voice-progress', p)
+  voice.setSpeakingListener((on) => broadcast('jarvis:speaking', on))
+  ipcMain.handle('voice:status', async (_e, model?: string) => {
+    const s = await store.getSettings()
+    return voice.voiceStatus(model ? { ...s, voiceModel: model } : s)
+  })
+  ipcMain.handle('voice:requestMic', () => voice.requestMic())
+  ipcMain.handle('voice:transcribe', async (_e, wav: ArrayBuffer) =>
+    voice.transcribe(new Uint8Array(wav), await store.getSettings())
+  )
+  ipcMain.handle('voice:speak', async (_e, text: string) => voice.speak(text, await store.getSettings()))
+  ipcMain.handle('voice:stopSpeaking', () => voice.stopSpeaking())
+  ipcMain.handle('voice:downloadModel', (_e, name: string) => voice.downloadModel(name, voiceProgress))
+  ipcMain.handle('voice:installWhisper', () => voice.installWhisper(voiceProgress))
+  ipcMain.handle('voice:wake', (_e, rest: string) => showQuick({ voice: !rest.trim(), prompt: rest.trim() || undefined }))
+
+  // Routines
+  ipcMain.handle('routines:list', async () =>
+    (await routines.listRoutines()).map((r) => ({ ...r, running: routines.isRunning(r.id) }))
+  )
+  ipcMain.handle('routines:save', (_e, r: Routine) => routines.saveRoutine(r))
+  ipcMain.handle('routines:remove', (_e, id: string) => routines.removeRoutine(id))
+  ipcMain.handle('routines:runNow', (_e, id: string) => {
+    void routines.runRoutine(id, routineHooks).finally(() => broadcast('jarvis:routines-changed'))
+    setTimeout(() => broadcast('jarvis:routines-changed'), 50)
+  })
+
+  // Updates
+  ipcMain.handle('updates:state', () => updateState())
+  ipcMain.handle('updates:check', () => checkForUpdates())
+  ipcMain.handle('updates:install', () => installUpdate())
 }
+
+// ---- permissions ----------------------------------------------------------
+
+function lockDownPermissions() {
+  const allowed = new Set(['media', 'clipboard-sanitized-write', 'notifications'])
+  session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => {
+    if (!isAppUrl(wc.getURL()) || !allowed.has(permission)) return cb(false)
+    if (permission === 'media') {
+      // Microphone only; never the camera or screen.
+      const types = (details as { mediaTypes?: string[] }).mediaTypes ?? []
+      return cb(types.length > 0 && types.every((t) => t === 'audio'))
+    }
+    cb(true)
+  })
+  session.defaultSession.setPermissionCheckHandler((wc, permission) => !!wc && isAppUrl(wc.getURL()) && allowed.has(permission))
+}
+
+// ---- dev screenshot hook --------------------------------------------------
+// JARVIS_SCREENSHOT=/tmp/x.png captures a window after load and quits.
+// JARVIS_SCREENSHOT_TARGET=quick shows the quick bar; JARVIS_SCREENSHOT_PROMPT types + sends a prompt;
+// JARVIS_SCREENSHOT_EVAL runs JS in the target first; JARVIS_SCREENSHOT_AUTOCLICK clicks a selector repeatedly.
+
+function devScreenshot() {
+  const shot = process.env.JARVIS_SCREENSHOT
+  if (!shot) return
+  const quick = process.env.JARVIS_SCREENSHOT_TARGET === 'quick'
+  if (quick) setTimeout(() => showQuick({ voice: false }), 1500)
+  const target = () => (quick ? getQuick() : getMain())!
+  setTimeout(() => {
+    const wc = target().webContents
+    const js = process.env.JARVIS_SCREENSHOT_EVAL
+    if (js) void wc.executeJavaScript(js)
+    const autoclick = process.env.JARVIS_SCREENSHOT_AUTOCLICK
+    if (autoclick) {
+      setInterval(() => void target().webContents.executeJavaScript(`document.querySelector(${JSON.stringify(autoclick)})?.click()`), 1500)
+    }
+    const prompt = process.env.JARVIS_SCREENSHOT_PROMPT
+    if (prompt) {
+      void wc.executeJavaScript(`(() => {
+        const ta = document.querySelector('textarea, input.quick-input')
+        const proto = ta instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
+        Object.getOwnPropertyDescriptor(proto, 'value').set.call(ta, ${JSON.stringify(prompt)})
+        ta.dispatchEvent(new Event('input', { bubbles: true }))
+        setTimeout(() => (document.querySelector('.send') ?? ta).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })), 100)
+        setTimeout(() => document.querySelector('.send')?.click(), 150)
+      })()`)
+    }
+  }, 4000)
+  setTimeout(async () => {
+    const img = await target().webContents.capturePage()
+    await writeFile(shot, img.toPNG())
+    app.quit()
+  }, Number(process.env.JARVIS_SCREENSHOT_DELAY ?? 6000))
+}
+
+// ---- boot -----------------------------------------------------------------
+
+let quitting = false
 
 app.whenReady().then(async () => {
   void loadShellEnv() // warm up; first run spawns a login shell
-  await startBridge({
+  lockDownPermissions()
+  await startBridge({ settings: () => store.getSettings(), requestApproval })
+  registerIpc()
+
+  const settings = await store.getSettings()
+  setDockVisible(!settings.menuBarOnly)
+  if (!settings.menuBarOnly || process.env.JARVIS_SCREENSHOT) createMain()
+  createQuick()
+  registerHotkeys(settings)
+
+  createTray({
     settings: () => store.getSettings(),
-    requestApproval(req) {
-      openApprovals.set(req.requestId, req.runId)
-      if (!win) return respondApproval(req.requestId, { behavior: 'deny', message: 'Jarvis window closed' })
-      win.webContents.send('jarvis:approval', req)
-      // Pull attention if Jarvis is in the background.
-      if (!win.isFocused()) {
-        if (process.platform === 'darwin') app.dock?.bounce('informational')
-        win.flashFrame(true)
-      }
+    routines: () => routines.listRoutines(),
+    update: updateState,
+    openMain: () => showMain(true),
+    openQuick: (v) => showQuick({ voice: v }),
+    openPanel,
+    runRoutine: (id) => void routines.runRoutine(id, routineHooks).finally(() => broadcast('jarvis:routines-changed')),
+    setWakeWord: async (on) => {
+      const s = { ...(await store.getSettings()), wakeWord: on }
+      await store.saveSettings(s)
+      await applySettings(s)
+      broadcast('jarvis:settings-changed', s)
+    },
+    installUpdate: () => void installUpdate(),
+    quit: () => app.quit()
+  })
+  onActiveRunsChanged((n) => setTrayBusy(n > 0))
+
+  routines.startScheduler(routineHooks, () => {
+    broadcast('jarvis:routines-changed')
+    void refreshTray()
+  })
+  void initUpdater({
+    auto: settings.autoUpdate,
+    onState: (s) => {
+      broadcast('jarvis:update-state', s)
+      void refreshTray()
     }
   })
-  registerIpc()
-  createWindow()
-  registerHotkey((await store.getSettings()).hotkey)
+  devScreenshot()
 
-  app.on('activate', () => {
-    if (!win) createWindow()
-    else win.show()
+  app.on('activate', () => showMain())
+})
+
+app.on('before-quit', (e) => {
+  if (quitting || activeRuns() === 0 || process.env.JARVIS_SCREENSHOT) return
+  // Don't silently kill agents mid-edit.
+  const choice = dialog.showMessageBoxSync({
+    type: 'question',
+    buttons: ['Quit and stop agents', 'Cancel'],
+    defaultId: 1,
+    message: `${activeRuns()} agent run(s) still working. Quit anyway?`
   })
+  if (choice !== 0) e.preventDefault()
+  else quitting = true
 })
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
-  for (const r of runs.values()) r.cancel()
+  voice.stopSpeaking()
+  cancelAll()
 })
 
+// Jarvis lives in the menu bar: closing windows never quits (Quit from the tray or ⌘Q).
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })

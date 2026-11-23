@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AgentEvent, ApprovalRequest, JarvisApi, LearnedEvent } from '@shared/types'
+import type { AgentEvent, ApprovalRequest, JarvisApi, LearnedEvent, Settings, UpdateState, VoiceProgress } from '@shared/types'
 
 function subscribe<T extends unknown[]>(channel: string, cb: (...args: T) => void) {
   const listener = (_: unknown, ...args: unknown[]) => cb(...(args as T))
@@ -38,6 +38,8 @@ const api: JarvisApi = {
   deleteConversation: (id) => ipcRenderer.invoke('deleteConversation', id),
   getSettings: () => ipcRenderer.invoke('getSettings'),
   saveSettings: (s) => ipcRenderer.invoke('saveSettings', s),
+  hotkeyErrors: () => ipcRenderer.invoke('hotkeyErrors'),
+  onSettingsChanged: (cb) => subscribe<[Settings]>('jarvis:settings-changed', cb),
   modes: () => ipcRenderer.invoke('modes'),
   memory: {
     list: (q) => ipcRenderer.invoke('memory:list', q),
@@ -50,6 +52,41 @@ const api: JarvisApi = {
     reindex: (id) => ipcRenderer.invoke('memory:reindex', id),
     status: () => ipcRenderer.invoke('memory:status'),
     onSourcesChanged: (cb) => subscribe<[]>('jarvis:sources-changed', cb)
+  },
+  onConversationsChanged: (cb) => subscribe<[]>('jarvis:conversations-changed', cb),
+  onOpenConversation: (cb) => subscribe<[string]>('jarvis:open-conversation', cb),
+  onOpenPanel: (cb) => subscribe<['settings' | 'routines']>('jarvis:open-panel', cb),
+  quick: {
+    hide: () => ipcRenderer.invoke('quick:hide'),
+    resize: (h) => ipcRenderer.invoke('quick:resize', h),
+    pin: (p) => ipcRenderer.invoke('quick:pin', p),
+    openInMain: (id) => ipcRenderer.invoke('quick:openInMain', id),
+    onShow: (cb) => subscribe<[{ voice: boolean; prompt?: string }]>('jarvis:quick-show', cb)
+  },
+  voice: {
+    status: (m) => ipcRenderer.invoke('voice:status', m),
+    requestMic: () => ipcRenderer.invoke('voice:requestMic'),
+    transcribe: (wav) => ipcRenderer.invoke('voice:transcribe', wav),
+    speak: (t) => ipcRenderer.invoke('voice:speak', t),
+    stopSpeaking: () => ipcRenderer.invoke('voice:stopSpeaking'),
+    onSpeaking: (cb) => subscribe<[boolean]>('jarvis:speaking', cb),
+    downloadModel: (name) => ipcRenderer.invoke('voice:downloadModel', name),
+    installWhisper: () => ipcRenderer.invoke('voice:installWhisper'),
+    onProgress: (cb) => subscribe<[VoiceProgress]>('jarvis:voice-progress', cb),
+    wake: (rest) => ipcRenderer.invoke('voice:wake', rest)
+  },
+  routines: {
+    list: () => ipcRenderer.invoke('routines:list'),
+    save: (r) => ipcRenderer.invoke('routines:save', r),
+    remove: (id) => ipcRenderer.invoke('routines:remove', id),
+    runNow: (id) => ipcRenderer.invoke('routines:runNow', id),
+    onChanged: (cb) => subscribe<[]>('jarvis:routines-changed', cb)
+  },
+  updates: {
+    state: () => ipcRenderer.invoke('updates:state'),
+    check: () => ipcRenderer.invoke('updates:check'),
+    install: () => ipcRenderer.invoke('updates:install'),
+    onState: (cb) => subscribe<[UpdateState]>('jarvis:update-state', cb)
   }
 }
 

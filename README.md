@@ -14,9 +14,19 @@ Local desktop agent. Electron + React shell that drives the AI CLIs you already 
 pnpm install
 pnpm dev        # dev with hot reload
 pnpm build && pnpm start
+pnpm dist       # signed Jarvis.app + dmg + zip in dist/
 ```
 
-Shortcuts: `⌘⇧Space` summon from anywhere · `⌘N` new chat · `Esc` stop run.
+Shortcuts (change in Settings → Shortcuts):
+
+| Keys | What |
+|---|---|
+| `⌥Space` | quick bar — floating Spotlight-style ask from anywhere |
+| `⌥⇧Space` | talk — quick bar opens listening |
+| `⌘⇧Space` | main window |
+| `⌘N` / `Esc` / `⌘B` | new chat / stop run / workbench |
+
+Jarvis lives in the menu bar (ring icon; dashed while an agent works). Closing the window keeps it running; quit from the menu or `⌘Q`. Settings → App → *Menu bar only* hides the Dock icon.
 
 ## Concepts
 
@@ -74,19 +84,51 @@ uvx --from "jev-style[mlx]" jev-style serve      # :8765, Apple silicon
 
 When the Jev server is offline, Jarvis uses keyword heuristics instead. The URL is set in Settings; jevos (`:8017`) works too. To test without the model: `bun scripts/mock-jev.ts`.
 
+## Quick bar
+
+`⌥Space` opens a floating bar over any app (also over full-screen apps). Type, Enter. The first message is auto-routed (Jev/heuristic) like a new chat; follow-ups continue the same session. `⌘O` opens the thread in the main window, `⌘N` starts fresh, `⌘.` stops, `Esc` hides (the run keeps going). Quick chats show up in the sidebar tagged *quick*. Approval popups appear inside the bar.
+
+## Voice (all local)
+
+- **Speech-to-text**: whisper.cpp (`whisper-cli`) + a ggml model. Settings → Voice → *Install* builds whisper-cli from source into `~/Library/Application Support/Jarvis/whisper` (works without Homebrew; needs Xcode tools and `cmake` or `uv`). Or `brew install whisper-cpp` — anything on your shell PATH is picked up. *Download* fetches the model (default `base`, 142 MB, multilingual). Warm transcription of a sentence is ~0.3 s on Apple Silicon.
+- **Push-to-talk**: `⌥⇧Space` or the mic button. Recording stops after ~1.2 s of silence (or click again). The transcript is sent as the prompt with a "keep it short" hint.
+- **Spoken replies**: when you spoke, the answer is read with macOS `say` (code and links skipped). `Esc` stops it. Pick a voice in Settings.
+- **Wake word** (off by default): Settings → Voice → *Listen for "Jarvis"*, or the menu-bar toggle. An energy VAD cuts speech into ≤6 s clips; each is transcribed locally and only acted on if it starts with "Jarvis…" / "Hey Jarvis…". "Jarvis, what's on my board?" runs immediately; "Jarvis" alone opens the bar listening. Paused while Jarvis is speaking or the bar is open. Audio is never stored or uploaded; macOS shows the mic indicator while it's on.
+
+## Routines
+
+Scheduled prompts with fresh data, answered into a new chat (tagged *routine*) plus a notification (click opens it); optionally read aloud. Manage in the sidebar → Routines or the menu bar.
+
+- Placeholders filled before the run: `{{linear}}` (your open issues), `{{prs}}` (your open PRs + review requests via `gh search prs`), `{{repos}}` (branch/uncommitted/unpushed for mapped repos), `{{date}}`.
+- Schedules: time of day on chosen weekdays, or every N minutes. Missed runs catch up after sleep (within 6 h — no morning briefing at 9 pm).
+- Runs are unattended and read-only: no approval tool is attached, so anything beyond reading is declined.
+- Built-in *Morning briefing* (weekdays 08:30) ships **disabled** — flip it on. Templates: PR review sweep, end-of-day wrap-up.
+
+## Packaging + auto-update
+
+`pnpm dist` builds `dist/Jarvis-<v>-arm64.dmg` and the `-mac.zip` update payload with electron-builder (`electron-builder.yml`): hardened runtime, mic entitlement, signed with the first identity in your keychain. `bridge.js` is unpacked from the asar so agent CLIs can spawn it.
+
+Auto-update uses electron-updater against GitHub Releases (`publish` in `electron-builder.yml`, currently `DamonBslr/jarvis`). To ship an update: bump `version` in package.json, then `GH_TOKEN=… pnpm release` — it uploads dmg, zip and `latest-mac.yml`; installed apps download it in the background and install on quit (Settings → App). For other Macs without Gatekeeper warnings, sign with a *Developer ID Application* certificate and set `APPLE_API_KEY`/`APPLE_API_KEY_ID`/`APPLE_API_ISSUER` (or `APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID`) so electron-builder notarizes. A private repo also needs a token at runtime, so a public releases repo is simpler.
+
 ## Tests
 
 ```bash
 JARVIS_DB_DIR=$(mktemp -d) npx tsx scripts/memory-test.mts          # memory, RAG, routing
 JARVIS_DB_DIR=$(mktemp -d) npx tsx scripts/memory-test.mts --learn  # + real learner call
 bun scripts/smoke.ts codex "prompt"                                  # provider adapters
-npx tsx scripts/integrations-test.mts /path/to/repo                  # git parser + Linear auth errors
+npx tsx scripts/integrations-test.mts                                 # git parser + Linear auth errors
 ```
 
 ## Layout
 
 ```
-src/main/            Electron main: IPC, window, hotkey
+src/main/            Electron main: IPC + boot (index.ts)
+  runner.ts          one run pipeline (memory context, MCP bridge, learning, approval routing per window)
+  windows.ts         main window + floating quick bar
+  tray.ts            menu-bar icon and menu
+  voice.ts           whisper.cpp transcription, model download/install, macOS speech
+  routines.ts        scheduler + data gatherers for scheduled prompts
+  updater.ts         electron-updater wiring
   providers/         one adapter per engine -> normalized AgentEvent stream
   shellEnv.ts        loads PATH/env from your login shell (GUI apps don't get it)
   modes.ts           personas (+ Auto)
@@ -99,6 +141,10 @@ src/main/            Electron main: IPC, window, hotkey
 src/preload/         typed bridge (window.jarvis)
 src/renderer/        React UI
 src/shared/types.ts  contracts shared by all three
+src/shared/chat.ts   event->message reducer, history, speakable text
+src/renderer/src/QuickBar.tsx, voice.ts   quick bar UI; mic capture, VAD, WAV, wake listener
+resources/           tray icons + install-whisper.sh (shipped as extraResources)
+assets/, build/      icon sources (pnpm icons) + builder resources/entitlements
 scripts/smoke.ts     headless adapter test: bun scripts/smoke.ts codex "prompt"
 ```
 

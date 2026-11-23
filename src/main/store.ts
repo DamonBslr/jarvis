@@ -19,7 +19,16 @@ export const DEFAULT_SETTINGS: Settings = {
   learnOllamaModel: 'gemma3',
   useMemory: true,
   linearRepoMap: {},
-  linearAutoMove: true
+  linearAutoMove: true,
+  quickHotkey: 'Alt+Space',
+  voiceHotkey: 'Alt+Shift+Space',
+  voiceModel: 'base',
+  voiceLanguage: 'auto',
+  speakReplies: true,
+  ttsVoice: '',
+  wakeWord: false,
+  menuBarOnly: false,
+  autoUpdate: true
 }
 
 async function atomicWrite(path: string, data: string) {

@@ -201,6 +201,10 @@ export interface Conversation {
   updatedAt: number
   /** Linear issue this chat is working on. */
   linear?: { id: string; identifier: string; title: string; url: string; prLinked?: string }
+  /** Set when a routine created this chat. */
+  routineId?: string
+  /** Started from the quick bar. */
+  quick?: boolean
 }
 
 export interface Settings {
@@ -222,6 +226,71 @@ export interface Settings {
   linearRepoMap: Record<string, string>
   /** Move tickets automatically: In Progress on start, In Review when a PR is linked. */
   linearAutoMove: boolean
+  /** Global shortcut for the floating quick bar. */
+  quickHotkey: string
+  /** Global shortcut that opens the quick bar and starts listening. */
+  voiceHotkey: string
+  /** whisper.cpp model name (ggml-<name>.bin). */
+  voiceModel: string
+  /** Spoken language for transcription ('auto' detects). */
+  voiceLanguage: string
+  /** Read answers aloud when the question was spoken. */
+  speakReplies: boolean
+  /** macOS `say` voice ('' = system default). */
+  ttsVoice: string
+  /** Keep the mic open and react to "Jarvis …" (all transcription stays local). */
+  wakeWord: boolean
+  /** Hide the Dock icon; Jarvis lives in the menu bar. */
+  menuBarOnly: boolean
+  /** Download and install updates automatically (packaged app only). */
+  autoUpdate: boolean
+}
+
+export type RoutineSchedule =
+  | { kind: 'daily'; time: string; days: number[] } // time "HH:MM", days 0=Sun..6=Sat
+  | { kind: 'interval'; minutes: number }
+
+export interface Routine {
+  id: string
+  name: string
+  /** Prompt; {{linear}}, {{prs}}, {{repos}}, {{date}} are filled with fresh data before the run. */
+  prompt: string
+  schedule: RoutineSchedule
+  provider: ProviderId
+  model?: string
+  cwd: string
+  enabled: boolean
+  notify: boolean
+  speak: boolean
+  lastRunAt?: number
+  lastConvId?: string
+  lastError?: string
+  /** When the schedule was last saved; a daily slot earlier than this never fires retroactively. */
+  armedAt?: number
+}
+
+export interface VoiceStatus {
+  whisper: { found: boolean; path?: string }
+  model: { name: string; downloaded: boolean; sizeMb?: number }
+  micAccess: 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown'
+  voices: string[]
+}
+
+export interface VoiceProgress {
+  task: 'model' | 'whisper'
+  step?: string
+  progress?: number
+  done?: boolean
+  error?: string
+}
+
+export interface UpdateState {
+  version: string
+  packaged: boolean
+  status: 'idle' | 'disabled' | 'checking' | 'available' | 'downloading' | 'ready' | 'none' | 'error'
+  next?: string
+  progress?: number
+  error?: string
 }
 
 export interface JarvisApi {
@@ -234,7 +303,10 @@ export interface JarvisApi {
   saveConversation(c: Conversation): Promise<void>
   deleteConversation(id: string): Promise<void>
   getSettings(): Promise<Settings>
-  saveSettings(s: Settings): Promise<void>
+  /** Returns shortcuts that could not be registered (name -> reason). */
+  saveSettings(s: Settings): Promise<Record<string, string>>
+  hotkeyErrors(): Promise<Record<string, string>>
+  onSettingsChanged(cb: (s: Settings) => void): () => void
   modes(): Promise<Mode[]>
   onLearned(cb: (ev: LearnedEvent) => void): () => void
   route(prompt: string, fallback: ProviderId): Promise<RouteDecision>
@@ -265,5 +337,45 @@ export interface JarvisApi {
     reindex(id: number): Promise<void>
     status(): Promise<MemoryStatus>
     onSourcesChanged(cb: () => void): () => void
+  }
+  /** Conversations written by another window or a routine. */
+  onConversationsChanged(cb: () => void): () => void
+  onOpenConversation(cb: (convId: string) => void): () => void
+  onOpenPanel(cb: (panel: 'settings' | 'routines') => void): () => void
+  quick: {
+    hide(): Promise<void>
+    resize(height: number): Promise<void>
+    /** Keep the bar open when it loses focus (approval waiting, recording). */
+    pin(pinned: boolean): Promise<void>
+    openInMain(convId: string): Promise<void>
+    /** Fired when the quick bar is summoned; voice=true means start listening. */
+    onShow(cb: (opts: { voice: boolean; prompt?: string }) => void): () => void
+  }
+  voice: {
+    /** Pass a model name to check a model other than the saved one. */
+    status(model?: string): Promise<VoiceStatus>
+    requestMic(): Promise<boolean>
+    transcribe(wav: ArrayBuffer): Promise<string>
+    speak(text: string): Promise<void>
+    stopSpeaking(): Promise<void>
+    onSpeaking(cb: (on: boolean) => void): () => void
+    downloadModel(name: string): Promise<void>
+    installWhisper(): Promise<void>
+    onProgress(cb: (p: VoiceProgress) => void): () => void
+    /** Wake word heard: text after "Jarvis". */
+    wake(rest: string): Promise<void>
+  }
+  routines: {
+    list(): Promise<(Routine & { running?: boolean })[]>
+    save(r: Routine): Promise<void>
+    remove(id: string): Promise<void>
+    runNow(id: string): Promise<void>
+    onChanged(cb: () => void): () => void
+  }
+  updates: {
+    state(): Promise<UpdateState>
+    check(): Promise<void>
+    install(): Promise<void>
+    onState(cb: (s: UpdateState) => void): () => void
   }
 }

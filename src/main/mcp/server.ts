@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage } from 'node:http'
 import { randomBytes, randomUUID } from 'node:crypto'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import type { AddressInfo } from 'node:net'
 import type { ApprovalDecision, ApprovalRequest, Settings } from '@shared/types'
 import { embed } from '../memory/embed'
@@ -114,7 +114,8 @@ export async function startBridge(deps: BridgeDeps) {
 export function bridgeLaunch(runId: string, groups: string[]) {
   return {
     command: process.execPath,
-    args: [join(__dirname, 'bridge.js')],
+    // Packaged builds unpack bridge.js next to the asar (see electron-builder.yml asarUnpack).
+    args: [join(__dirname, 'bridge.js').replace(`app.asar${sep}`, `app.asar.unpacked${sep}`)],
     env: {
       ELECTRON_RUN_AS_NODE: '1',
       JARVIS_BRIDGE_URL: baseUrl,
