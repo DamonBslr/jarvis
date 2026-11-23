@@ -6,6 +6,10 @@
  *  - approve:   permission prompt for Claude Code (--permission-prompt-tool) -> popup in Jarvis
  *  - memory_*:  read/write the user's long-term memory
  *  - linear_*:  read/update Linear issues with the key stored in Jarvis
+ *  - computer:  screenshots + mouse/keyboard on the user's Mac. Its tool list comes from Jarvis
+ *               (POST /tools) so it can depend on the run's policy, and so this file imports nothing
+ *               from the app: shared modules would become a rollup chunk inside app.asar, which this
+ *               unpacked script could not load.
  *
  * Runs under Electron-as-Node (ELECTRON_RUN_AS_NODE=1). No dependencies.
  */
@@ -16,7 +20,7 @@ const TOKEN = process.env.JARVIS_BRIDGE_TOKEN!
 const RUN_ID = process.env.JARVIS_RUN_ID ?? ''
 const GROUPS = new Set((process.env.JARVIS_TOOLS ?? 'memory,linear').split(','))
 
-type Tool = { name: string; group: string; description: string; inputSchema: object }
+type Tool = { name: string; group: string; description: string; inputSchema: object; annotations?: object }
 
 const str = (description: string) => ({ type: 'string', description })
 
@@ -86,9 +90,33 @@ const TOOLS: Tool[] = [
   }
 ]
 
-const enabled = TOOLS.filter((t) => GROUPS.has(t.group))
+/** Groups whose tools are defined by the Jarvis main process rather than in this file. */
+const REMOTE_GROUPS = ['computer'].filter((g) => GROUPS.has(g))
+let remoteTools: Promise<Tool[]> | null = null
 
-async function call(name: string, args: unknown): Promise<string> {
+async function listTools(): Promise<Tool[]> {
+  const local = TOOLS.filter((t) => GROUPS.has(t.group))
+  if (!REMOTE_GROUPS.length) return local
+  remoteTools ??= fetch(`${URL_}/tools`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-jarvis-token': TOKEN },
+    body: JSON.stringify({ runId: RUN_ID, groups: REMOTE_GROUPS })
+  }).then(async (res) => {
+    if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`)
+    return (await res.json()) as Tool[]
+  })
+  try {
+    return [...local, ...(await remoteTools)]
+  } catch (err) {
+    remoteTools = null // retry on the next list
+    throw err
+  }
+}
+
+/** Tool output: plain text, or raw MCP content blocks (e.g. screenshots) when Jarvis marks them. */
+type Content = { type: string; [k: string]: unknown }[]
+
+async function call(name: string, args: unknown): Promise<Content> {
   const res = await fetch(`${URL_}/tool`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-jarvis-token': TOKEN },
@@ -96,7 +124,8 @@ async function call(name: string, args: unknown): Promise<string> {
   })
   const text = await res.text()
   if (!res.ok) throw new Error(text || `HTTP ${res.status}`)
-  return text
+  if (res.headers.get('x-jarvis-content') === 'mcp') return JSON.parse(text) as Content
+  return [{ type: 'text', text }]
 }
 
 function send(msg: object) {
@@ -132,13 +161,20 @@ rl.on('line', async (line) => {
         return send({
           jsonrpc: '2.0',
           id,
-          result: { tools: enabled.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) }
+          result: {
+            tools: (await listTools()).map(({ name, description, inputSchema, annotations }) => ({
+              name,
+              description,
+              inputSchema,
+              ...(annotations ? { annotations } : {})
+            }))
+          }
         })
       case 'tools/call': {
         const name = params?.name
-        if (!enabled.some((t) => t.name === name)) throw new Error(`unknown tool ${name}`)
-        const text = await call(name, params?.arguments ?? {})
-        return send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text }] } })
+        if (!(await listTools()).some((t) => t.name === name)) throw new Error(`unknown tool ${name}`)
+        const content = await call(name, params?.arguments ?? {})
+        return send({ jsonrpc: '2.0', id, result: { content } })
       }
       default:
         return send({ jsonrpc: '2.0', id, error: { code: -32601, message: `method not found: ${method}` } })

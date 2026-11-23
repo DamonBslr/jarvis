@@ -3,7 +3,7 @@ import type { ProviderStatus, Settings, UpdateState, VoiceProgress, VoiceStatus 
 
 const api = window.jarvis
 
-type Tab = 'general' | 'memory' | 'voice' | 'shortcuts' | 'app'
+type Tab = 'general' | 'memory' | 'voice' | 'tools' | 'shortcuts' | 'app'
 
 const MODELS: { id: string; label: string }[] = [
   { id: 'tiny.en', label: 'tiny.en · 75 MB · fastest, English' },
@@ -179,6 +179,56 @@ function VoiceTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
   )
 }
 
+function ToolsTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
+  return (
+    <>
+      <label className="row check">
+        <input type="checkbox" checked={s.browserTool} onChange={(e) => setS({ ...s, browserTool: e.target.checked })} />
+        <div>
+          <div>Browser</div>
+          <small>
+            Agents get Jarvis's own Chrome profile, separate from your everyday browser. Logins you make there stick.
+            Clicking and typing ask first in "Edit files" mode.
+          </small>
+        </div>
+      </label>
+      {s.browserTool && (
+        <label className="row check">
+          <input
+            type="checkbox"
+            checked={s.browserVisible}
+            onChange={(e) => setS({ ...s, browserVisible: e.target.checked })}
+          />
+          <div>
+            <div>Show the browser window</div>
+            <small>Watch the agent browse (and sign in for it). Off runs headless. Routines always run headless.</small>
+          </div>
+        </label>
+      )}
+      <label className="row check">
+        <input type="checkbox" checked={s.computerUse} onChange={(e) => setS({ ...s, computerUse: e.target.checked })} />
+        <div>
+          <div>Computer use</div>
+          <small>
+            Agents can take screenshots and control mouse and keyboard. Every action asks first unless autonomy is
+            "Full access". Needs Screen Recording and Accessibility for Jarvis (System Settings → Privacy &amp; Security).
+          </small>
+        </div>
+      </label>
+      <label className="row check">
+        <input type="checkbox" checked={s.t3Tools} onChange={(e) => setS({ ...s, t3Tools: e.target.checked })} />
+        <div>
+          <div>T3 Code</div>
+          <small>
+            Agents can list, read and start threads in your local T3 Code. Jarvis signs in via the t3 CLI as "Jarvis"
+            (revocable in T3); turning this off revokes it.
+          </small>
+        </div>
+      </label>
+    </>
+  )
+}
+
 function AppTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
   const [u, setU] = useState<UpdateState | null>(null)
   useEffect(() => {
@@ -266,7 +316,7 @@ export function SettingsPanel({
         <div className="panel-head">
           <h2>Settings</h2>
           <div className="tabs">
-            {(['general', 'memory', 'voice', 'shortcuts', 'app'] as Tab[]).map((t) => (
+            {(['general', 'memory', 'voice', 'tools', 'shortcuts', 'app'] as Tab[]).map((t) => (
               <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
                 {t}
               </button>
@@ -395,6 +445,8 @@ export function SettingsPanel({
           )}
 
           {tab === 'voice' && <VoiceTab s={s} setS={setS} />}
+
+          {tab === 'tools' && <ToolsTab s={s} setS={setS} />}
 
           {tab === 'shortcuts' && (
             <>

@@ -16,6 +16,7 @@
     "icons": "bash scripts/icons.sh"
   },
   "dependencies": {
+    "@playwright/mcp": "0.0.85",
     "electron-updater": "^6.8.11"
   },
   "devDependencies": {

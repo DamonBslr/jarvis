@@ -14,6 +14,10 @@ extraResources:
 # Agent CLIs spawn the MCP bridge with ELECTRON_RUN_AS_NODE; keep it a real file on disk.
 asarUnpack:
   - out/main/bridge.js
+  # Playwright spawns its own child processes from these files (agent browser).
+  - node_modules/@playwright/mcp/**
+  - node_modules/playwright/**
+  - node_modules/playwright-core/**
 mac:
   target:
     - target: dmg

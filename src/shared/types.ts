@@ -37,7 +37,18 @@ export interface RunRequest {
   msgId?: string
   /** Jarvis MCP bridge launch spec (set by main). */
   mcp?: { command: string; args: string[]; env: Record<string, string> }
+  /** Additional MCP servers for this run (browser, computer use, T3 Code…), set by main from settings. */
+  extraMcp?: Record<string, McpServerSpec>
+  /** Tool names (e.g. "mcp__browser__browser_snapshot") pre-approved for Claude, alongside the Jarvis read-only tools. */
+  extraAllowedTools?: string[]
+  /** Extra Codex `-c key=value` overrides from capabilities. */
+  codexConfig?: string[]
 }
+
+/** One MCP server: stdio (command) or streamable HTTP (url). */
+export type McpServerSpec =
+  | { type?: 'stdio'; command: string; args: string[]; env?: Record<string, string>; cwd?: string }
+  | { type: 'http'; url: string; headers?: Record<string, string> }
 
 export interface ProviderStatus {
   id: ProviderId
@@ -248,6 +259,14 @@ export interface Settings {
   menuBarOnly: boolean
   /** Download and install updates automatically (packaged app only). */
   autoUpdate: boolean
+  /** Let agents see and control the Mac (screenshots, mouse, keyboard). Actions ask first unless autonomy is "full". */
+  computerUse: boolean
+  /** Give agents Jarvis's own browser (persistent profile, separate from your everyday browser). */
+  browserTool: boolean
+  /** Show the Jarvis browser window while agents drive it (otherwise headless). */
+  browserVisible: boolean
+  /** Let agents talk to the local T3 Code app (threads, projects). */
+  t3Tools: boolean
 }
 
 export type RoutineSchedule =

@@ -11,6 +11,7 @@ import * as store from './store'
 import { buildContext } from './memory/context'
 import { learnFromTurn } from './memory/learn'
 import { bridgeLaunch, respondApproval } from './mcp/server'
+import { collectTools } from './tools'
 
 export const providers: Record<ProviderId, Provider> = {
   claude: claudeProvider,
@@ -107,6 +108,17 @@ export async function startRun(req: RunRequest, sink: RunSink, owner: WebContent
   if (req.provider !== 'ollama') {
     const groups = ['memory', 'linear', ...(req.provider === 'claude' && owner ? ['approve'] : [])]
     req = { ...req, mcp: bridgeLaunch(req.runId, groups) }
+    // Optional capabilities (browser, computer use, T3 Code), each behind a setting.
+    const tools = await collectTools({ settings, req, env, interactive: !!owner }, (message) =>
+      send({ kind: 'log', message })
+    )
+    req = {
+      ...req,
+      extraMcp: tools.servers,
+      extraAllowedTools: tools.allowedTools,
+      codexConfig: tools.codexConfig,
+      systemPrompt: [req.systemPrompt, ...tools.hints].filter(Boolean).join('\n\n') || undefined
+    }
   }
 
   // Collect the answer so the learner can look at the whole turn afterwards.

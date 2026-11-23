@@ -30,7 +30,11 @@ export const DEFAULT_SETTINGS: Settings = {
   liveHotkey: 'Alt+Shift+L',
   liveBargeIn: false,
   menuBarOnly: false,
-  autoUpdate: true
+  autoUpdate: true,
+  computerUse: false,
+  browserTool: true,
+  browserVisible: true,
+  t3Tools: false
 }
 
 async function atomicWrite(path: string, data: string) {

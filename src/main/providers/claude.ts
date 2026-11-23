@@ -55,21 +55,20 @@ export const claudeProvider: Provider = {
     ]
     if (req.sessionId) args.push('--resume', req.sessionId)
     if (req.model && req.model !== 'default') args.push('--model', req.model)
-    if (req.mcp) {
-      args.push('--mcp-config', JSON.stringify({ mcpServers: { jarvis: req.mcp } }))
-      // Read-only Jarvis tools never need a prompt; Linear writes still ask in "Edit files" mode.
-      args.push(
-        '--allowedTools',
-        'mcp__jarvis__memory_search',
-        'mcp__jarvis__remember',
-        'mcp__jarvis__linear_my_issues',
-        'mcp__jarvis__linear_get_issue'
-      )
-      // In "Edit files" mode, anything beyond file edits (shell, git, network) asks you in Jarvis.
-      // Only when a window can answer (routines run unattended: anything not pre-allowed is denied).
-      if (req.autonomy === 'edit' && req.mcp.env.JARVIS_TOOLS?.split(',').includes('approve'))
-        args.push('--permission-prompt-tool', 'mcp__jarvis__approve')
-    }
+    const servers = { ...(req.mcp ? { jarvis: req.mcp } : {}), ...(req.extraMcp ?? {}) }
+    if (Object.keys(servers).length) args.push('--mcp-config', JSON.stringify({ mcpServers: servers }))
+    // Read-only tools never need a prompt; Linear writes and anything with side effects still ask in "Edit files" mode.
+    const allowed = [
+      ...(req.mcp
+        ? ['mcp__jarvis__memory_search', 'mcp__jarvis__remember', 'mcp__jarvis__linear_my_issues', 'mcp__jarvis__linear_get_issue']
+        : []),
+      ...(req.extraAllowedTools ?? [])
+    ]
+    if (allowed.length) args.push('--allowedTools', ...allowed)
+    // In "Edit files" mode, anything beyond file edits (shell, git, network) asks you in Jarvis.
+    // Only when a window can answer (routines run unattended: anything not pre-allowed is denied).
+    if (req.mcp && req.autonomy === 'edit' && req.mcp.env.JARVIS_TOOLS?.split(',').includes('approve'))
+      args.push('--permission-prompt-tool', 'mcp__jarvis__approve')
     const extra = [req.systemPrompt, req.context].filter(Boolean).join('\n\n')
     if (extra) args.push('--append-system-prompt', extra)
 

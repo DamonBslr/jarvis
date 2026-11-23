@@ -8,6 +8,8 @@ import { addMemory, searchMemories } from '../memory/memories'
 import { searchChunks } from '../memory/knowledge'
 import * as linear from '../integrations/linear'
 import { getSecret } from '../secrets'
+import { computerTool } from '../tools/computer/defs'
+import { computerToolList, runComputerTool, type McpContentResult } from '../tools/computer/exec'
 
 export interface BridgeDeps {
   settings(): Promise<Settings>
@@ -44,17 +46,31 @@ async function linearKey(): Promise<string> {
   return key
 }
 
+/** Show an approval popup in the run's window and wait for the answer. */
+function askUser(deps: BridgeDeps, runId: string, toolName: string, input: unknown): Promise<ApprovalDecision> {
+  const requestId = randomUUID()
+  return new Promise<ApprovalDecision>((resolve) => {
+    // Unanswered prompts deny after 10 minutes so the CLI never hangs forever.
+    const timer = setTimeout(() => respondApproval(requestId, { behavior: 'deny', message: 'No answer from user' }), 600_000)
+    pending.set(requestId, { resolve, timer })
+    deps.requestApproval({ requestId, runId, toolName, input })
+  })
+}
+
+const isMcpContent = (v: unknown): v is McpContentResult =>
+  typeof v === 'object' && v !== null && Array.isArray((v as McpContentResult).mcpContent)
+
 async function handleTool(name: string, args: any, runId: string, deps: BridgeDeps): Promise<unknown> {
   const settings = await deps.settings()
+  // Computer use runs here in the main process; policy/permission checks live in runComputerTool.
+  if (computerTool(name))
+    return runComputerTool(runId, name, args, {
+      enabled: settings.computerUse,
+      ask: async (toolName, input) => (await askUser(deps, runId, toolName, input)).behavior === 'allow'
+    })
   switch (name) {
     case 'approve': {
-      const requestId = randomUUID()
-      const decision = await new Promise<ApprovalDecision>((resolve) => {
-        // Unanswered prompts deny after 10 minutes so the CLI never hangs forever.
-        const timer = setTimeout(() => respondApproval(requestId, { behavior: 'deny', message: 'No answer from user' }), 600_000)
-        pending.set(requestId, { resolve, timer })
-        deps.requestApproval({ requestId, runId, toolName: String(args.tool_name), input: args.input })
-      })
+      const decision = await askUser(deps, runId, String(args.tool_name), args.input)
       // Claude Code's permission-prompt contract.
       return decision.behavior === 'allow'
         ? { behavior: 'allow', updatedInput: args.input }
@@ -94,12 +110,24 @@ export async function startBridge(deps: BridgeDeps) {
   const server = createServer(async (req, res) => {
     try {
       // Loopback + token: other local processes/websites can't drive Jarvis tools.
-      if (req.headers['x-jarvis-token'] !== token || req.method !== 'POST' || req.url !== '/tool') {
+      if (req.headers['x-jarvis-token'] !== token || req.method !== 'POST' || (req.url !== '/tool' && req.url !== '/tools')) {
         res.writeHead(403).end('forbidden')
+        return
+      }
+      if (req.url === '/tools') {
+        // Tool definitions the bridge does not carry itself (they depend on the run's policy).
+        const { runId, groups } = await readBody(req)
+        const list = Array.isArray(groups) && groups.includes('computer') ? computerToolList(String(runId ?? '')) : []
+        res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(list))
         return
       }
       const { runId, name, args } = await readBody(req)
       const result = await handleTool(String(name), args ?? {}, String(runId ?? ''), deps)
+      if (isMcpContent(result)) {
+        // Rich result (e.g. a screenshot): the bridge passes these MCP content blocks through as-is.
+        res.writeHead(200, { 'content-type': 'application/json', 'x-jarvis-content': 'mcp' }).end(JSON.stringify(result.mcpContent))
+        return
+      }
       res.writeHead(200, { 'content-type': 'text/plain' }).end(typeof result === 'string' ? result : JSON.stringify(result, null, 2))
     } catch (err) {
       res.writeHead(500, { 'content-type': 'text/plain' }).end(err instanceof Error ? err.message : String(err))

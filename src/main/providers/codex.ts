@@ -1,6 +1,12 @@
 import type { Provider } from './types'
 import { spawnLines, stderrSummary, version } from './spawn'
 
+/** TOML inline table from a string map (JSON strings are valid TOML basic strings). */
+const tomlTable = (m: Record<string, string>) =>
+  `{${Object.entries(m)
+    .map(([k, v]) => `${JSON.stringify(k)}=${JSON.stringify(v)}`)
+    .join(', ')}}`
+
 const SANDBOX = { ask: 'read-only', edit: 'workspace-write', full: 'danger-full-access' } as const
 
 /**
@@ -33,6 +39,20 @@ export const codexProvider: Provider = {
         `mcp_servers.jarvis.env={${env}}`
       )
     }
+    for (const [name, spec] of Object.entries(req.extraMcp ?? {})) {
+      // Bare TOML keys only: a quoted key ends up as a server literally named with quotes, and Codex drops it.
+      const key = /^[A-Za-z0-9_-]+$/.test(name) ? `mcp_servers.${name}` : `mcp_servers.${JSON.stringify(name)}`
+      if ('url' in spec) {
+        common.push('-c', `${key}.url=${JSON.stringify(spec.url)}`)
+        if (spec.headers && Object.keys(spec.headers).length)
+          common.push('-c', `${key}.http_headers=${tomlTable(spec.headers)}`)
+      } else {
+        common.push('-c', `${key}.command=${JSON.stringify(spec.command)}`, '-c', `${key}.args=${JSON.stringify(spec.args)}`)
+        if (spec.env && Object.keys(spec.env).length) common.push('-c', `${key}.env=${tomlTable(spec.env)}`)
+        if (spec.cwd) common.push('-c', `${key}.cwd=${JSON.stringify(spec.cwd)}`)
+      }
+    }
+    for (const kv of req.codexConfig ?? []) common.push('-c', kv)
 
     // Codex has no system-prompt flag in exec mode; prefix the first turn instead.
     // Mode instructions go in once; memory context is per turn since it depends on the prompt.

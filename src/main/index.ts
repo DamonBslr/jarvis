@@ -10,6 +10,7 @@ import { probeEmbeddings } from './memory/embed'
 import * as mem from './memory/memories'
 import * as kb from './memory/knowledge'
 import { startBridge } from './mcp/server'
+import { disconnectT3 } from './tools/t3'
 import * as git from './integrations/git'
 import * as linear from './integrations/linear'
 import { getSecret, setSecret } from './secrets'
@@ -276,7 +277,10 @@ function registerIpc() {
   })
   ipcMain.handle('getSettings', () => store.getSettings())
   ipcMain.handle('saveSettings', async (_e, s: Settings) => {
+    const before = await store.getSettings()
     await store.saveSettings(s)
+    // Turning T3 tools off revokes Jarvis's T3 session instead of leaving a 30-day token around.
+    if (before.t3Tools && !s.t3Tools) void loadShellEnv().then(disconnectT3).catch(() => {})
     await applySettings(s)
     return { ...hotkeyErrors }
   })
