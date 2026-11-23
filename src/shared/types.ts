@@ -247,8 +247,14 @@ export interface Settings {
   voiceLanguage: string
   /** Read answers aloud when the question was spoken. */
   speakReplies: boolean
-  /** macOS `say` voice ('' = system default). */
+  /** macOS `say` voice ('' = system default). Also the fallback when the neural voice can't speak a reply. */
   ttsVoice: string
+  /** 'neural' = Kokoro on this Mac (natural), 'system' = macOS `say`. */
+  ttsEngine: 'neural' | 'system'
+  /** Kokoro voice id, e.g. "bm_george" (prefix: a=US, b=UK English, e/f/i/p/j/z/h = other languages). */
+  neuralVoice: string
+  /** Speaking rate for the neural voice (1 = normal). */
+  ttsSpeed: number
   /** Keep the mic open and react to "Jarvis …" (all transcription stays local). */
   wakeWord: boolean
   /** Global shortcut that starts/ends a hands-free live conversation in the main window. */
@@ -297,10 +303,12 @@ export interface VoiceStatus {
   model: { name: string; downloaded: boolean; sizeMb?: number }
   micAccess: 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown'
   voices: string[]
+  /** Neural voice: uv runs the worker, model files live in userData/kokoro. */
+  neural: { uv: boolean; downloaded: boolean; sizeMb: number }
 }
 
 export interface VoiceProgress {
-  task: 'model' | 'whisper'
+  task: 'model' | 'whisper' | 'neural'
   step?: string
   progress?: number
   done?: boolean
@@ -387,6 +395,8 @@ export interface JarvisApi {
     onSpeaking(cb: (on: boolean) => void): () => void
     downloadModel(name: string): Promise<void>
     installWhisper(): Promise<void>
+    /** Download the neural voice (Kokoro) and install its runtime. */
+    downloadNeural(): Promise<void>
     onProgress(cb: (p: VoiceProgress) => void): () => void
     /** Wake word heard: text after "Jarvis". */
     wake(rest: string): Promise<void>

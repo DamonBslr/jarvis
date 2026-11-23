@@ -73,6 +73,7 @@ const api: JarvisApi = {
     onSpeaking: (cb) => subscribe<[boolean]>('jarvis:speaking', cb),
     downloadModel: (name) => ipcRenderer.invoke('voice:downloadModel', name),
     installWhisper: () => ipcRenderer.invoke('voice:installWhisper'),
+    downloadNeural: () => ipcRenderer.invoke('voice:downloadNeural'),
     onProgress: (cb) => subscribe<[VoiceProgress]>('jarvis:voice-progress', cb),
     wake: (rest) => ipcRenderer.invoke('voice:wake', rest),
     setLive: (on) => ipcRenderer.invoke('voice:setLive', on),

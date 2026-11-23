@@ -95,7 +95,7 @@ When the Jev server is offline, Jarvis uses keyword heuristics instead. The URL 
 - **Push-to-talk**: `⌥⇧Space` or the mic button. Recording stops after ~1.2 s of silence (or click again). The transcript is sent as the prompt with a "keep it short" hint.
 - **Dictation**: the mic button in the main composer (or `⌘D`) records until you pause, then puts the transcript in the message box to edit before sending.
 - **Live mode**: the waveform button, `⌥⇧L`, the menu bar, or "Jarvis, live mode" (with the wake word on). A hands-free loop in the current chat: it listens, sends what you said when you pause (~0.9 s), reads the answer aloud sentence by sentence as it streams (code blocks stay on screen), then listens again. The agent gets a "spoken conversation" hint, so answers stay short. `Esc` or *Interrupt* stops the answer and cancels the run; `Esc` again, *End*, or saying "stop live mode" / "goodbye" ends it. It also ends after 3 quiet minutes. Approvals still pop up, and Jarvis says so. The mic is ignored while Jarvis speaks so it doesn't hear itself; with headphones, turn on Settings → Voice → *interrupt by talking* to cut it off just by speaking. Keeps running when the window is hidden.
-- **Spoken replies**: when you spoke, the answer is read with macOS `say` (code and links skipped). `Esc` stops it. Pick a voice in Settings.
+- **Spoken replies**: when you spoke, the answer is read aloud (code and links skipped); `Esc` stops it. Default is a natural neural voice, [Kokoro-82M](https://github.com/thewh1teagle/kokoro-onnx) running on this Mac: Settings → Voice → *Natural voice* downloads it (338 MB into `~/Library/Application Support/Jarvis/kokoro`; needs `uv`, which installs the Python runtime once). A long-lived worker (`resources/kokoro-worker.py`) renders the next sentence while the current one plays, about 6× faster than real time on Apple Silicon. Pick from British and American voices (default *George*) and a speed. Kokoro can't speak German, so German answers, or any reply when the neural voice isn't set up, use macOS `say` with the fallback voice you choose.
 - **Wake word** (off by default): Settings → Voice → *Listen for "Jarvis"*, or the menu-bar toggle. An energy VAD cuts speech into ≤6 s clips; each is transcribed locally and only acted on if it starts with "Jarvis…" / "Hey Jarvis…". "Jarvis, what's on my board?" runs immediately; "Jarvis" alone opens the bar listening. Paused while Jarvis is speaking or the bar is open. Audio is never stored or uploaded; macOS shows the mic indicator while it's on.
 
 ## Routines
@@ -129,7 +129,7 @@ src/main/            Electron main: IPC + boot (index.ts)
   runner.ts          one run pipeline (memory context, MCP bridge, learning, approval routing per window)
   windows.ts         main window + floating quick bar
   tray.ts            menu-bar icon and menu
-  voice.ts           whisper.cpp transcription, model download/install, macOS speech
+  voice.ts           whisper.cpp transcription, model download/install, Kokoro neural voice + macOS speech
   routines.ts        scheduler + data gatherers for scheduled prompts
   updater.ts         electron-updater wiring
   providers/         one adapter per engine -> normalized AgentEvent stream

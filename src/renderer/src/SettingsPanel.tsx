@@ -25,6 +25,21 @@ const LANGS = [
   ['pt', 'Portuguese']
 ]
 
+// Kokoro v1.0 voices worth hearing (the rest of the set is noticeably weaker).
+const NEURAL_VOICES: [string, string][] = [
+  ['bm_george', 'George — British, calm (Jarvis)'],
+  ['bm_fable', 'Fable — British, warm'],
+  ['bm_daniel', 'Daniel — British, crisp'],
+  ['bm_lewis', 'Lewis — British, deep'],
+  ['bf_emma', 'Emma — British'],
+  ['bf_isabella', 'Isabella — British'],
+  ['am_michael', 'Michael — American'],
+  ['am_fenrir', 'Fenrir — American, deep'],
+  ['af_heart', 'Heart — American'],
+  ['af_bella', 'Bella — American'],
+  ['af_nicole', 'Nicole — American, soft']
+]
+
 function VoiceTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
   const [status, setStatus] = useState<VoiceStatus | null>(null)
   const [progress, setProgress] = useState<Partial<Record<VoiceProgress['task'], VoiceProgress>>>({})
@@ -45,6 +60,9 @@ function VoiceTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
   const modelP = progress.model
   const installing = whisperP && !whisperP.done && !whisperP.error
   const downloading = modelP && !modelP.done && !modelP.error
+  const neuralP = progress.neural
+  const neuralBusy = neuralP && !neuralP.done && !neuralP.error
+  const neuralReady = status.neural.uv && status.neural.downloaded
 
   return (
     <>
@@ -112,6 +130,33 @@ function VoiceTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
             </button>
           )}
         </div>
+
+        <div className="setup-row">
+          <span className={`health-dot ${neuralReady ? 'ok' : 'off'}`} />
+          <div className="setup-main">
+            <div>Natural voice (Kokoro, on this Mac)</div>
+            <small>
+              {!status.neural.uv
+                ? 'Needs uv to run: brew install uv'
+                : neuralReady
+                  ? 'Installed'
+                  : neuralBusy
+                    ? (neuralP?.step ?? 'Downloading…')
+                    : 'Not downloaded. Replies use the macOS voice until then.'}
+              {neuralP?.error && <span className="error-inline"> {neuralP.error}</span>}
+            </small>
+            {neuralBusy && (
+              <div className="progress">
+                <div style={{ width: `${Math.round((neuralP?.progress ?? 0) * 100)}%` }} />
+              </div>
+            )}
+          </div>
+          {status.neural.uv && !neuralReady && (
+            <button className="ghost" disabled={!!neuralBusy} onClick={() => void api.voice.downloadNeural().catch(() => {})}>
+              {neuralBusy ? `${Math.round((neuralP?.progress ?? 0) * 100)}%` : `Download ${status.neural.sizeMb} MB`}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="row-pair">
@@ -131,6 +176,46 @@ function VoiceTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
         </label>
         <label className="row">
           <span>Reply voice</span>
+          <select
+            value={s.ttsEngine === 'neural' ? `n:${s.neuralVoice}` : 'system'}
+            onChange={(e) =>
+              setS(
+                e.target.value === 'system'
+                  ? { ...s, ttsEngine: 'system' }
+                  : { ...s, ttsEngine: 'neural', neuralVoice: e.target.value.slice(2) }
+              )
+            }
+          >
+            <optgroup label="Natural (Kokoro)">
+              {NEURAL_VOICES.map(([id, label]) => (
+                <option key={id} value={`n:${id}`}>
+                  {label}
+                </option>
+              ))}
+            </optgroup>
+            <option value="system">macOS voice</option>
+          </select>
+        </label>
+      </div>
+
+      <div className="row-pair">
+        {s.ttsEngine === 'neural' ? (
+          <label className="row">
+            <span>Speed · {s.ttsSpeed.toFixed(2)}×</span>
+            <input
+              type="range"
+              min={0.8}
+              max={1.4}
+              step={0.05}
+              value={s.ttsSpeed}
+              onChange={(e) => setS({ ...s, ttsSpeed: Number(e.target.value) })}
+            />
+          </label>
+        ) : (
+          <span />
+        )}
+        <label className="row">
+          <span>{s.ttsEngine === 'neural' ? 'Fallback voice (German etc.)' : 'macOS voice'}</span>
           <select value={s.ttsVoice} onChange={(e) => setS({ ...s, ttsVoice: e.target.value })}>
             <option value="">System default</option>
             {status.voices.map((v) => (
@@ -145,8 +230,11 @@ function VoiceTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
         <div>
           <div>Answer out loud when I speak</div>
           <small>
-            Uses macOS speech. Code blocks are skipped.{' '}
-            <button className="link" onClick={() => void api.voice.speak("Hello. I'm Jarvis, and I'm listening.")}>
+            {s.ttsEngine === 'neural' && neuralReady
+              ? 'Natural voice, generated on this Mac.'
+              : 'Uses macOS speech.'}{' '}
+            Code blocks are skipped. Save, then{' '}
+            <button className="link" onClick={() => void api.voice.speak("Good afternoon. I'm Jarvis, and I'm listening.")}>
               Test voice
             </button>
           </small>

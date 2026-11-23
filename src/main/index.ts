@@ -308,6 +308,7 @@ function registerIpc() {
   ipcMain.handle('voice:stopSpeaking', () => voice.stopSpeaking())
   ipcMain.handle('voice:downloadModel', (_e, name: string) => voice.downloadModel(name, voiceProgress))
   ipcMain.handle('voice:installWhisper', () => voice.installWhisper(voiceProgress))
+  ipcMain.handle('voice:downloadNeural', () => voice.downloadNeural(voiceProgress))
   ipcMain.handle('voice:say', async (_e, text: string) => voice.say(text, await store.getSettings()))
   ipcMain.handle('voice:wake', (_e, rest: string) => {
     if (LIVE_PHRASE.test(rest.trim())) return toggleLive(true)
@@ -458,7 +459,7 @@ app.on('before-quit', (e) => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
-  voice.stopSpeaking()
+  voice.shutdownSpeech()
   cancelAll()
 })
 
