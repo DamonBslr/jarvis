@@ -47,20 +47,21 @@ function ConnectionRow({ c, onError }: { c: ConnectionStatus; onError: (msg: str
         <div className="conn-title">
           <strong>{c.name}</strong>
           <span className="conn-kind">{KIND_LABEL[c.kind]}</span>
-          {c.kind !== 'browser' && <code className="conn-id">mcp__{c.id}</code>}
         </div>
         <small title={c.issuer && c.kind === 'oauth' ? `Revoke anytime at ${new URL(c.issuer).host} (client "Jarvis"), or remove it here.` : undefined}>
           {c.url}
           {c.account && <> · as {c.account}</>}
-          {c.lastUsedAt && <> · used {ago(c.lastUsedAt)}</>}
+          {!c.tools && c.lastUsedAt && <> · used {ago(c.lastUsedAt)}</>}
         </small>
         {c.state !== 'connected' && c.detail && <small className={c.state === 'needs-auth' ? 'warn-inline' : 'error-inline'}>{c.detail}</small>}
         {c.tools && (
           <details className="conn-tools">
             <summary>
               {c.tools.length} {c.tools.length === 1 ? 'tool' : 'tools'} · {c.tools.length - writes} read-only, {writes} can change things
+              {c.lastUsedAt && <> · used {ago(c.lastUsedAt)}</>}
             </summary>
             <div>
+              {c.kind !== 'browser' && <code className="conn-id">mcp__{c.id}</code>}
               {c.tools.map((t) => (
                 <code key={t.name} className={t.readOnly ? '' : 'conn-write'}>
                   {t.name}

@@ -72,6 +72,7 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
   const [status, setStatus] = useState<MemoryStatus | null>(null)
   const [newText, setNewText] = useState('')
   const [newType, setNewType] = useState<MemoryType>('preference')
+  const [adding, setAdding] = useState(false)
 
   const loadMemories = useCallback(() => api.list(query).then(setMemories), [query])
   const loadSources = useCallback(() => api.sources().then(setSources), [])
@@ -89,6 +90,7 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
     if (!newText.trim()) return
     await api.add({ type: newType, content: newText })
     setNewText('')
+    setAdding(false)
     void loadMemories()
   }
 
@@ -102,6 +104,11 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
       <div className="panel memory-panel" onClick={(e) => e.stopPropagation()}>
         <div className="panel-head">
           <h2>Memory</h2>
+          {tab === 'memories' && !adding && (
+            <button className="primary" onClick={() => setAdding(true)}>
+              Add memory
+            </button>
+          )}
         </div>
         <div className="tabs panel-tabs">
           {(['memories', 'knowledge', 'status'] as Tab[]).map((t) => (
@@ -117,22 +124,28 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
               What Jarvis knows about you. Learned automatically after conversations; pinned items are always in
               context.
             </p>
-            <div className="mem-add">
-              <select value={newType} onChange={(e) => setNewType(e.target.value as MemoryType)}>
-                {TYPES.map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </select>
-              <input
-                placeholder="Teach Jarvis something, e.g. “I prefer pnpm and conventional commits”"
-                value={newText}
-                onChange={(e) => setNewText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && void add()}
-              />
-              <button className="primary" onClick={() => void add()} disabled={!newText.trim()}>
-                Add
-              </button>
-            </div>
+            {adding && (
+              <div className="mem-add">
+                <select value={newType} onChange={(e) => setNewType(e.target.value as MemoryType)}>
+                  {TYPES.map((t) => (
+                    <option key={t}>{t}</option>
+                  ))}
+                </select>
+                <input
+                  autoFocus
+                  placeholder="Teach Jarvis something, e.g. “I prefer pnpm and conventional commits”"
+                  value={newText}
+                  onChange={(e) => setNewText(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && void add()}
+                />
+                <button className="primary" onClick={() => void add()} disabled={!newText.trim()}>
+                  Add
+                </button>
+                <button className="ghost" onClick={() => setAdding(false)}>
+                  Cancel
+                </button>
+              </div>
+            )}
             <label className="search-field">
               <IconSearch size={14} />
               <input className="mem-search" placeholder="Search memories…" value={query} onChange={(e) => setQuery(e.target.value)} />

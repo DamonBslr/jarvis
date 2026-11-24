@@ -4130,11 +4130,7 @@ button.tl-title {
   margin: 0 6px;
   background: var(--line);
 }
-.conn-row .setup-main > small:first-of-type {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+
 
 /* Round 5: page template, quieter Linear colours, balanced rows */
 .overlay.page > .panel {
@@ -4234,4 +4230,44 @@ button.tl-title {
 }
 .approval-secret input::placeholder {
   font-family: var(--sans);
+}
+
+/* Round 5 (GPT): one selection at a time, readable actions, focused input only, brief hierarchy */
+.app.page-open .conv-item.active {
+  background: none;
+  color: var(--muted);
+}
+.ghost.small,
+.wb-actions .wb-review {
+  color: var(--text-2);
+  height: 28px;
+  min-height: 28px;
+}
+.composer-stack:has(.pr-banner):focus-within {
+  border-color: var(--line);
+  box-shadow: var(--shadow-soft);
+}
+.composer-stack:has(.pr-banner) .composer-box:focus-within {
+  box-shadow: inset 0 0 0 1px rgba(108, 200, 218, 0.45);
+  border-radius: 0 0 13px 13px;
+}
+.pr-banner {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.md.brief {
+  max-width: 68ch;
+}
+.md.brief h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  margin: 24px 0 6px;
+}
+.brief-foot {
+  max-width: 68ch;
+}
+.conn-tools .conn-id {
+  margin-right: 6px;
+  color: var(--faint);
 }

@@ -738,7 +738,7 @@ export function App() {
     )
 
   return (
-    <div className={`app ${wbVisible ? 'with-wb' : ''}`}>
+    <div className={`app ${wbVisible ? 'with-wb' : ''} ${showProjects || showMemory || showRoutines ? 'page-open' : ''}`}>
       <aside className="sidebar">
         <div className="sidebar-top drag">
           <div className="brand">
