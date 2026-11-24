@@ -4,6 +4,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { KnowledgeItem, KnowledgeOverview, OpenLoop, ProjectDigest, Settings } from '@shared/types'
 import { FocusPicker, FolderList, SOURCE_LABEL, SourceList, timeAgo, useSyncProgress } from './knowledgeUi'
+import { IconX } from './icons'
 
 const api = window.jarvis
 type View = { kind: 'project'; id: string } | { kind: 'elsewhere' } | { kind: 'sources' } | { kind: 'focus' }
@@ -268,7 +269,7 @@ function LoopList({ loops, empty }: { loops: OpenLoop[]; empty?: string }) {
             </div>
           </div>
           <button className="icon del" title="Dismiss until it changes" onClick={() => api.knowledge.dismissLoop(l.key)}>
-            ×
+            <IconX size={13} />
           </button>
         </div>
       ))}

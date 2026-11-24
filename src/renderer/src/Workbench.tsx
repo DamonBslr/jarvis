@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { GitFile, GitStatus, LinearIssue, PullRequest } from '@shared/types'
+import { IconBranch, IconPr, IconRefresh, IconX } from './icons'
 
 const api = window.jarvis
 
@@ -68,24 +69,31 @@ function GitTab({
       <div className="wb-head">
         <div className="wb-branch">
           <span className="wb-repo">{repoName}</span>
-          <span className="wb-branch-name">{status.branch}</span>
+          <span className="wb-branch-name">
+            <IconBranch size={12} />
+            {status.branch}
+          </span>
           {(status.ahead ?? 0) > 0 && <span className="wb-ab">↑{status.ahead}</span>}
           {(status.behind ?? 0) > 0 && <span className="wb-ab">↓{status.behind}</span>}
           {!status.upstream && status.branch !== '(detached)' && <span className="wb-ab dim">no upstream</span>}
         </div>
-        <button className="icon" title="Refresh" onClick={() => void load()}>
-          {loading ? '…' : '↻'}
+        <button className={`icon ${loading ? 'spinning' : ''}`} title="Refresh" aria-label="Refresh" onClick={() => void load()}>
+          <IconRefresh size={14} />
         </button>
       </div>
 
       {pr && (
         <button className={`wb-pr ${pr.checks ?? ''}`} onClick={() => api.openExternal(pr.url)}>
-          <span className="wb-pr-num">#{pr.number}</span>
-          <span className="wb-pr-title">{pr.title}</span>
+          <span className="wb-pr-icon">
+            <IconPr size={15} />
+          </span>
+          <span className="wb-pr-title">
+            {pr.title} <span className="wb-pr-num">#{pr.number}</span>
+          </span>
           <span className="wb-pr-meta">
-            {pr.isDraft ? 'draft' : pr.state.toLowerCase()}
-            {pr.checks && ` · checks ${pr.checks}`}
-            {pr.reviewDecision && ` · ${pr.reviewDecision.toLowerCase().replace('_', ' ')}`}
+            <span className="wb-pill">{pr.isDraft ? 'Draft' : pr.state.charAt(0) + pr.state.slice(1).toLowerCase()}</span>
+            {pr.checks && <span className={`wb-pill checks ${pr.checks}`}>Checks {pr.checks}</span>}
+            {pr.reviewDecision && <span className="wb-pill">{pr.reviewDecision.charAt(0) + pr.reviewDecision.slice(1).toLowerCase().replace(/_/g, ' ')}</span>}
           </span>
         </button>
       )}
@@ -143,8 +151,8 @@ function GitTab({
           <div className="panel diff-panel" onClick={(e) => e.stopPropagation()}>
             <div className="panel-head">
               <h2 className="mono">{diff.path}</h2>
-              <button className="icon" onClick={() => setDiff(null)}>
-                ×
+              <button className="icon" onClick={() => setDiff(null)} aria-label="Close">
+                <IconX size={15} />
               </button>
             </div>
             <pre className="diff">
@@ -260,8 +268,8 @@ function LinearTab({
     <div className="wb-linear">
       <div className="wb-head">
         <input className="wb-filter" placeholder="Filter my issues…" value={filter} onChange={(e) => setFilter(e.target.value)} />
-        <button className="icon" title="Refresh" onClick={() => void loadIssues()}>
-          ↻
+        <button className="icon" title="Refresh" aria-label="Refresh" onClick={() => void loadIssues()}>
+          <IconRefresh size={14} />
         </button>
       </div>
       {error && <div className="error">{error}</div>}

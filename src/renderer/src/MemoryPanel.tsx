@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { KnowledgeSource, Memory, MemoryStatus, MemoryType } from '@shared/types'
+import { IconX } from './icons'
 
 const api = window.jarvis.memory
 const TYPES: MemoryType[] = ['profile', 'preference', 'workflow', 'project', 'person', 'fact']
@@ -62,7 +63,7 @@ function MemoryRow({ m, onChange }: { m: Memory; onChange: () => void }) {
         ★
       </button>
       <button className="icon del" title="Forget" onClick={() => api.remove(m.id).then(onChange)}>
-        ×
+        <IconX size={13} />
       </button>
     </div>
   )
@@ -180,7 +181,7 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
                     Re-index
                   </button>
                   <button className="icon del" title="Remove" onClick={() => api.removeSource(s.id)}>
-                    ×
+                    <IconX size={13} />
                   </button>
                 </div>
               ))}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ConnectionsTab } from './ConnectionsTab'
 import type { ProviderStatus, Settings, UpdateState, VoiceProgress, VoiceStatus } from '@shared/types'
+import { IconX } from './icons'
 
 const api = window.jarvis
 
@@ -496,7 +497,7 @@ export function SettingsPanel({
                           setS({ ...s, linearRepoMap: next })
                         }}
                       >
-                        ×
+                        <IconX size={13} />
                       </button>
                     </div>
                   ))}

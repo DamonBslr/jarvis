@@ -1,6 +1,7 @@
 // Building blocks shared by first-run setup and the Projects panel: sources (with consent) and focus picking.
 import { useCallback, useEffect, useState } from 'react'
 import type { ConnectorId, ConnectorInfo, KnowledgeSource, ProjectCandidate, Settings, SyncProgress } from '@shared/types'
+import { IconX } from './icons'
 
 const api = window.jarvis
 
@@ -182,7 +183,7 @@ export function FolderList() {
           <span className="src-path">{s.path}</span>
           <span className="mem-meta">{s.status === 'indexing' ? 'indexing…' : s.status === 'error' ? s.error : `${s.files} files`}</span>
           <button className="icon del" title="Stop reading this folder" onClick={() => api.memory.removeSource(s.id)}>
-            ×
+            <IconX size={13} />
           </button>
         </div>
       ))}

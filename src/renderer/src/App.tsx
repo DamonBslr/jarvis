@@ -23,6 +23,7 @@ import { HomeDigest } from './HomeDigest'
 import { applyEvent, historyFor, uid } from '@shared/chat'
 import { Mic, recordUtterance, type Utterance } from './voice'
 import { LIVE_SYSTEM_PROMPT, LiveLoop, type LivePhase } from './live'
+import { IconArrowUp, IconBrain, IconClock, IconCompose, IconFolder, IconLayers, IconPanelRight, IconSettings, IconStop, IconX } from './icons'
 
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
 
@@ -60,6 +61,23 @@ const AUTONOMY_LABEL: Record<RunRequest['autonomy'], string> = {
   full: 'Full access'
 }
 
+/** Sidebar sections by last activity. */
+function groupByDay(convs: Conversation[]): { label: string; items: Conversation[] }[] {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  const today = start.getTime()
+  const day = 86_400_000
+  const buckets: [string, number][] = [
+    ['Today', today],
+    ['Yesterday', today - day],
+    ['Previous 7 days', today - 7 * day],
+    ['Older', -Infinity]
+  ]
+  const groups = buckets.map(([label]) => ({ label, items: [] as Conversation[] }))
+  for (const c of convs) groups[buckets.findIndex(([, from]) => c.updatedAt >= from)].items.push(c)
+  return groups.filter((g) => g.items.length)
+}
+
 const basename = (p: string) => p.split('/').filter(Boolean).pop() ?? p
 export const prettyKey = (accel: string) =>
   accel
@@ -68,6 +86,12 @@ export const prettyKey = (accel: string) =>
     .replace(/Alt|Option/g, '⌥')
     .replace(/Shift/g, '⇧')
     .replace(/\+/g, '')
+
+function greeting(name?: string) {
+  const h = new Date().getHours()
+  const part = h < 5 ? 'Working late' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
+  return name ? `${part}, ${name}.` : `${part}.`
+}
 
 const PHASE_LABEL: Record<LivePhase, string> = {
   listening: 'Listening…',
@@ -685,54 +709,62 @@ export function App() {
           </div>
         </div>
         <button className="new-chat" onClick={newConversation}>
-          New chat <kbd>⌘N</kbd>
+          <IconCompose size={15} />
+          <span>New chat</span>
+          <kbd>⌘N</kbd>
         </button>
         <nav className="conv-list">
-          {convs.map((c) => (
-            <div
-              key={c.id}
-              className={`conv-item ${c.id === activeId ? 'active' : ''}`}
-              onClick={() => setActiveId(c.id)}
-            >
-              <span className={`dot ${runs[c.id] ? 'running' : ''}`} data-provider={c.provider} />
-              <span className="conv-title">{c.title}</span>
-              {c.routineId && <span className="conv-tag" title="Created by a routine">routine</span>}
-              {c.quick && !c.routineId && <span className="conv-tag" title="Started from the quick bar">quick</span>}
-              <button
-                className="conv-del"
-                title="Delete"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  void removeConversation(c.id)
-                }}
-              >
-                ×
-              </button>
-            </div>
+          {groupByDay(convs).map((g) => (
+            <section key={g.label} className="conv-group">
+              <div className="conv-group-label">{g.label}</div>
+              {g.items.map((c) => (
+                <div
+                  key={c.id}
+                  className={`conv-item ${c.id === activeId ? 'active' : ''}`}
+                  onClick={() => setActiveId(c.id)}
+                >
+                  <span className={`dot ${runs[c.id] ? 'running' : ''}`} data-provider={c.provider} />
+                  <span className="conv-title">{c.title}</span>
+                  {c.routineId && <span className="conv-tag" title="Created by a routine">routine</span>}
+                  {c.quick && !c.routineId && <span className="conv-tag" title="Started from the quick bar">quick</span>}
+                  <button
+                    className="conv-del"
+                    title="Delete"
+                    aria-label="Delete chat"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void removeConversation(c.id)
+                    }}
+                  >
+                    <IconX size={13} />
+                  </button>
+                </div>
+              ))}
+            </section>
           ))}
         </nav>
         <div className="sidebar-foot">
-          <div className="provider-health" onClick={refreshProviders} title="Click to re-check">
+          <button className="nav-item" onClick={() => setShowProjects(true)}>
+            <IconLayers size={15} /> Projects
+          </button>
+          <button className="nav-item" onClick={() => setShowMemory(true)}>
+            <IconBrain size={15} /> Memory
+          </button>
+          <button className="nav-item" onClick={() => setShowRoutines(true)}>
+            <IconClock size={15} /> Routines
+          </button>
+          <button className="nav-item" onClick={() => setShowSettings(true)}>
+            <IconSettings size={15} /> Settings
+          </button>
+          <div className="provider-health" onClick={refreshProviders} title="Engines · click to re-check">
             {providers.map((p) => (
-              <div key={p.id} className="health-row" title={p.detail ?? p.version ?? ''}>
+              <span key={p.id} className="health-row" title={p.detail ?? p.version ?? ''}>
                 <span className={`health-dot ${p.available ? 'ok' : 'off'}`} />
-                {PROVIDER_LABEL[p.id]}
+                {PROVIDER_LABEL[p.id].replace(' Code', '')}
                 {p.detail && p.available && <span className="health-warn">!</span>}
-              </div>
+              </span>
             ))}
           </div>
-          <button className="ghost" onClick={() => setShowProjects(true)}>
-            Projects
-          </button>
-          <button className="ghost" onClick={() => setShowMemory(true)}>
-            Memory
-          </button>
-          <button className="ghost" onClick={() => setShowRoutines(true)}>
-            Routines
-          </button>
-          <button className="ghost" onClick={() => setShowSettings(true)}>
-            Settings
-          </button>
         </div>
       </aside>
 
@@ -789,7 +821,7 @@ export function App() {
                 </select>
               )}
               <button className="folder" onClick={pickFolder} title={active.cwd}>
-                <span className="folder-icon">▸</span> {basename(active.cwd)}
+                <IconFolder size={14} /> {basename(active.cwd)}
               </button>
             </div>
           ) : (
@@ -803,11 +835,12 @@ export function App() {
               </button>
             )}
             <button
-              className={`ghost wb-toggle ${showWorkbench ? 'on' : ''}`}
+              className={`icon-btn wb-toggle ${showWorkbench ? 'on' : ''}`}
               onClick={() => setShowWorkbench((v) => !v)}
               title="Git & Linear workbench (⌘B)"
+              aria-label="Toggle workbench"
             >
-              Workbench
+              <IconPanelRight size={17} />
             </button>
           </div>
         </header>
@@ -816,17 +849,27 @@ export function App() {
           {!active || active.messages.length === 0 ? (
             <div className="empty">
               <div className="empty-orb" />
-              <h1>What should we do?</h1>
-              <p>
+              <h1>{greeting(settings.userName)}</h1>
+              <p className="empty-sub">
                 {currentMode?.description ??
                   'Runs on your machine through Claude Code, Codex and local Ollama models — using your own subscriptions.'}
               </p>
               <HomeDigest onAsk={(p, cwd) => void askAbout(p, cwd)} onOpen={() => setShowProjects(true)} />
-              <p className="hint">
-                <kbd>{prettyKey(settings.quickHotkey)}</kbd> quick ask · <kbd>{prettyKey(settings.voiceHotkey)}</kbd> talk ·{' '}
-                <kbd>{prettyKey(settings.liveHotkey)}</kbd> live conversation · <kbd>⌘D</kbd> dictate ·{' '}
-                <kbd>{prettyKey(settings.hotkey)}</kbd> this window · <kbd>Esc</kbd> stops a run
-              </p>
+              <div className="hint">
+                {(
+                  [
+                    [settings.quickHotkey, 'Quick ask'],
+                    [settings.voiceHotkey, 'Talk'],
+                    [settings.liveHotkey, 'Live'],
+                    ['⌘D', 'Dictate'],
+                    ['Esc', 'Stop a run']
+                  ] as const
+                ).map(([k, label]) => (
+                  <span key={label} className="hint-item">
+                    <kbd>{prettyKey(k)}</kbd> {label}
+                  </span>
+                ))}
+              </div>
             </div>
           ) : (
             active.messages.map((m) => (
@@ -854,8 +897,8 @@ export function App() {
           {voiceNote && (
             <div className="voice-note">
               <span>{voiceNote}</span>
-              <button className="link" onClick={() => setVoiceNote(null)} title="Dismiss">
-                ×
+              <button className="icon" onClick={() => setVoiceNote(null)} title="Dismiss" aria-label="Dismiss">
+                <IconX size={13} />
               </button>
             </div>
           )}
@@ -926,12 +969,12 @@ export function App() {
                 <LiveIcon />
               </button>
               {activeRun ? (
-                <button className="stop" onClick={cancel} title="Stop (Esc)">
-                  ■
+                <button className="stop" onClick={cancel} title="Stop (Esc)" aria-label="Stop">
+                  <IconStop size={16} />
                 </button>
               ) : (
-                <button className="send" onClick={() => void send()} disabled={!draft.trim()} title="Send (Enter)">
-                  ↑
+                <button className="send" onClick={() => void send()} disabled={!draft.trim()} title="Send (Enter)" aria-label="Send">
+                  <IconArrowUp size={16} />
                 </button>
               )}
             </div>

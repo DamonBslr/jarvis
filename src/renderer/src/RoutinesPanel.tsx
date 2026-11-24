@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ProviderId, ProviderStatus, Routine, Settings } from '@shared/types'
 import { uid } from '@shared/chat'
+import { IconX } from './icons'
 
 const api = window.jarvis
 const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
@@ -256,7 +257,7 @@ export function RoutinesPanel({
         <div className="panel-head">
           <h2>Routines</h2>
           <button className="icon" onClick={onClose}>
-            ×
+            <IconX size={13} />
           </button>
         </div>
         <p className="panel-sub">
