@@ -28,7 +28,7 @@ export function HomeDigest({ onAsk, onOpen }: { onAsk(prompt: string, cwd?: stri
             : 'Your projects'}
         </span>
         <button
-          className="link"
+          className="ghost small"
           onClick={() => {
             void api.knowledge.markSeen()
             onAsk("What did I miss? Go through my focus projects: what changed, what's waiting on me, and what I should do first today.")

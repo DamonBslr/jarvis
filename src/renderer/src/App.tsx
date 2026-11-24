@@ -23,7 +23,7 @@ import { HomeDigest } from './HomeDigest'
 import { applyEvent, historyFor, uid } from '@shared/chat'
 import { Mic, recordUtterance, type Utterance } from './voice'
 import { LIVE_SYSTEM_PROMPT, LiveLoop, type LivePhase } from './live'
-import { IconArrowUp, IconBrain, IconClock, IconCompose, IconFolder, IconLayers, IconPanelRight, IconSettings, IconStop, IconX } from './icons'
+import { IconArrowUp, IconBrain, IconClock, IconCompose, IconFolder, IconLayers, IconPanelRight, IconSettings, IconStop, IconX, IconTicket } from './icons'
 
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
 
@@ -820,6 +820,7 @@ export function App() {
                   </option>
                 ))}
               </select>
+              <span className="who-mark sm" data-provider={active.provider} />
               <select
                 value={active.provider}
                 onChange={(e) =>
@@ -873,6 +874,7 @@ export function App() {
           <div className="topbar-right no-drag">
             {active?.linear && (
               <button className="ticket-chip" onClick={() => api.openExternal(active.linear!.url)} title={active.linear.title}>
+                <IconTicket size={13} />
                 {active.linear.identifier}
                 {active.linear.prLinked && ' · PR linked'}
               </button>

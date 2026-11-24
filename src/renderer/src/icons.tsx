@@ -162,6 +162,12 @@ export const IconSync = (p: P) => (
     <path d="M4 9h13l-3-3M20 15H7l3 3" />
   </Svg>
 )
+export const IconTicket = (p: P) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 3.5a8.5 8.5 0 0 1 0 17" fill="currentColor" stroke="none" opacity=".45" />
+  </Svg>
+)
 export const IconCopy = (p: P) => (
   <Svg {...p}>
     <rect x="8" y="8" width="12" height="12" rx="2.5" />
