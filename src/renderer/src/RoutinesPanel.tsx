@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ProviderId, ProviderStatus, Routine, Settings } from '@shared/types'
 import { uid } from '@shared/chat'
-import { IconX } from './icons'
 import { timeAgo } from './knowledgeUi'
 
 const api = window.jarvis
@@ -250,9 +249,11 @@ export function RoutinesPanel({
       <div className="panel routines" onClick={(e) => e.stopPropagation()}>
         <div className="panel-head">
           <h2>Routines</h2>
-<button className="icon panel-close" onClick={onClose} title="Close (Esc)" aria-label="Close">
-            <IconX size={14} />
-          </button>
+          {!editing && !adding && (
+            <button className="primary" onClick={() => setAdding(true)}>
+              New routine
+            </button>
+          )}
         </div>
         <p className="panel-sub">
           Prompts Jarvis runs on a schedule with fresh Linear, GitHub and repo data. Each run becomes a chat you can
@@ -311,7 +312,7 @@ export function RoutinesPanel({
                     </div>
                   </div>
                   <button
-                    className="text-btn"
+                    className="ghost small"
                     disabled={r.running}
                     onClick={() => {
                       void api.routines.runNow(r.id)
@@ -343,13 +344,7 @@ export function RoutinesPanel({
                   cancel
                 </button>
               </div>
-            ) : (
-              <div className="panel-actions">
-                <button className="primary" onClick={() => setAdding(true)}>
-                  New routine
-                </button>
-              </div>
-            )}
+            ) : null}
           </>
         )}
       </div>

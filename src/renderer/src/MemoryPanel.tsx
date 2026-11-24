@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { KnowledgeSource, Memory, MemoryStatus, MemoryType } from '@shared/types'
-import { IconX } from './icons'
+import { IconSearch, IconX } from './icons'
 import { timeAgo } from './knowledgeUi'
 
 const api = window.jarvis.memory
@@ -102,9 +102,6 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
       <div className="panel memory-panel" onClick={(e) => e.stopPropagation()}>
         <div className="panel-head">
           <h2>Memory</h2>
-          <button className="icon panel-close" onClick={onClose} title="Close (Esc)" aria-label="Close">
-            <IconX size={14} />
-          </button>
         </div>
         <div className="tabs panel-tabs">
           {(['memories', 'knowledge', 'status'] as Tab[]).map((t) => (
@@ -136,12 +133,10 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
                 Add
               </button>
             </div>
-            <input
-              className="mem-search"
-              placeholder="Search memories…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
+            <label className="search-field">
+              <IconSearch size={14} />
+              <input className="mem-search" placeholder="Search memories…" value={query} onChange={(e) => setQuery(e.target.value)} />
+            </label>
             <div className="mem-list">
               {memories.length === 0 && (
                 <div className="mem-empty">

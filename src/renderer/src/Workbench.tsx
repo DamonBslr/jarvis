@@ -115,7 +115,7 @@ function GitTab({
         <button className="icon-btn" title="Sync with the default branch" aria-label="Sync" disabled={busy} onClick={() => onAsk('Update this branch with the latest default branch (fetch, then rebase if the branch is unpushed, otherwise merge). Resolve simple conflicts; stop and ask me about anything non-trivial.')}>
           <IconSync size={16} />
         </button>
-        <button className="text-btn" disabled={busy || !files.length} onClick={() => onAsk('Review the current uncommitted diff like a senior engineer: bugs, risky changes, missing tests. Be concise; do not change files.')}>
+        <button className="ghost wb-review" disabled={busy || !files.length} onClick={() => onAsk('Review the current uncommitted diff like a senior engineer: bugs, risky changes, missing tests. Be concise; do not change files.')}>
           Review
         </button>
       </div>
@@ -291,7 +291,8 @@ function LinearTab({
               <button className="wb-ident" onClick={() => api.openExternal(i.url)} title="Open in Linear">
                 {i.identifier}
               </button>
-              <span className="wb-state" style={{ color: i.state.color }}>
+              <span className="wb-state">
+                <span className="state-dot" style={{ background: i.state.color }} />
                 {i.state.name}
               </span>
             </div>
@@ -310,14 +311,14 @@ function LinearTab({
       <div className="wb-foot">
         Connected as {conn.user} ·{' '}
         <button
-          className="link"
+          className="link quiet-danger"
           onClick={async () => {
             await api.linear.clearKey()
             setConn({ connected: false })
             setIssues(null)
           }}
         >
-          disconnect
+          Disconnect
         </button>
       </div>
     </div>

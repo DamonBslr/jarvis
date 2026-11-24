@@ -60,9 +60,6 @@ export function ProjectsPanel({
             >
               <IconRefresh size={15} />
             </button>
-            <button className="icon panel-close" onClick={onClose} title="Close (Esc)" aria-label="Close">
-              <IconX size={14} />
-            </button>
           </div>
         </div>
 

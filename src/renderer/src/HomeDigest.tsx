@@ -47,7 +47,7 @@ export function HomeDigest({ onAsk, onOpen }: { onAsk(prompt: string, cwd?: stri
           >
             {d.project.name}
             <span className="mem-meta">{d.counts.week} this week</span>
-            {d.loops.length > 0 && <span className="loop-count">{d.loops.length}</span>}
+            {d.loops.length > 0 && <span className="loop-count">{d.loops.length} open</span>}
           </button>
         ))}
       </div>
@@ -57,7 +57,7 @@ export function HomeDigest({ onAsk, onOpen }: { onAsk(prompt: string, cwd?: stri
             <div key={l.key} className="digest-loop">
               <span className={`loop-dot ${l.kind}`} />
               <span className="digest-loop-title">{l.title}</span>
-              {name(l.projectId) && <span className="mem-meta">{name(l.projectId)}</span>}
+              <span className="mem-meta">{name(l.projectId) ?? 'elsewhere'}</span>
             </div>
           ))}
         </div>

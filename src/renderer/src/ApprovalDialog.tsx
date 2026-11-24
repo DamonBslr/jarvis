@@ -61,8 +61,10 @@ function ConnectDialog({
         </div>
         <h2 id="approval-title">Give Jarvis access to {c.name}?</h2>
         {chatTitle && <div className="approval-chat">{chatTitle}</div>}
-        <div className="approval-url">{c.url}</div>
-        {reason && <p className="approval-desc">“{reason}”</p>}
+        <div className="approval-context">
+          <div className="approval-url">{c.url}</div>
+          {reason && <p className="approval-reason">“{reason}”</p>}
+        </div>
         <p className="approval-desc">{c.action}</p>
         {c.secretLabel && (
           <label className="approval-secret">
