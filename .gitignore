@@ -3,4 +3,4 @@ out
 dist
 .DS_Store
 dist/
-screens/
+/screens/
