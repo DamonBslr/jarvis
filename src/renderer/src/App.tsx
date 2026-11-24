@@ -23,7 +23,7 @@ import { HomeDigest } from './HomeDigest'
 import { applyEvent, historyFor, uid } from '@shared/chat'
 import { Mic, recordUtterance, type Utterance } from './voice'
 import { LIVE_SYSTEM_PROMPT, LiveLoop, type LivePhase } from './live'
-import { IconArrowUp, IconBrain, IconClock, IconCompose, IconFolder, IconLayers, IconPanelRight, IconSettings, IconStop, IconX, IconTicket } from './icons'
+import { IconArrowUp, IconBrain, IconClock, IconCompose, IconFolder, IconLayers, IconPanelRight, IconSettings, IconStop, IconX, IconTicket, IconChevronDown } from './icons'
 
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
 
@@ -847,7 +847,6 @@ export function App() {
                   ))}
                 </select>
               )}
-              <span className="ctl-sep" />
               {active.provider !== 'ollama' && (
                 <select
                   value={active.autonomy}
@@ -866,6 +865,7 @@ export function App() {
               )}
               <button className="folder" onClick={pickFolder} title={active.cwd}>
                 <IconFolder size={14} /> {basename(active.cwd)}
+                <IconChevronDown size={13} />
               </button>
             </div>
           ) : (
@@ -899,7 +899,6 @@ export function App() {
                 {currentMode?.description ??
                   'Runs on your machine through Claude Code, Codex and local Ollama models — using your own subscriptions.'}
               </p>
-              <HomeDigest onAsk={(p, cwd) => void askAbout(p, cwd)} onOpen={() => openPage('projects')} />
             </div>
           ) : (
             active.messages.map((m) => (
@@ -1023,6 +1022,9 @@ export function App() {
                 </span>
               ))}
             </div>
+          )}
+          {isEmpty && !live && (
+            <HomeDigest onAsk={(p, cwd) => void askAbout(p, cwd)} onOpen={() => openPage('projects')} />
           )}
         </footer>
       </main>

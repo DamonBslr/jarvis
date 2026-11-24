@@ -493,7 +493,7 @@ export function SettingsPanel({
                 {Object.entries(s.linearRepoMap).map(([team, path]) => (
                   <div key={team} className="row">
                     <span>
-                      <code className="team-key">{team}</code> repository
+                      Repository for {team}
                     </span>
                     <div className="repo-map">
                       <input
