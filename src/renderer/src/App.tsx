@@ -17,6 +17,9 @@ import { MemoryPanel } from './MemoryPanel'
 import { ApprovalDialog } from './ApprovalDialog'
 import { Workbench } from './Workbench'
 import { RoutinesPanel } from './RoutinesPanel'
+import { ProjectsPanel } from './ProjectsPanel'
+import { Onboarding } from './Onboarding'
+import { HomeDigest } from './HomeDigest'
 import { applyEvent, historyFor, uid } from '@shared/chat'
 import { Mic, recordUtterance, type Utterance } from './voice'
 import { LIVE_SYSTEM_PROMPT, LiveLoop, type LivePhase } from './live'
@@ -108,6 +111,8 @@ export function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [showMemory, setShowMemory] = useState(false)
   const [showRoutines, setShowRoutines] = useState(false)
+  const [showProjects, setShowProjects] = useState(false)
+  const [onboarding, setOnboarding] = useState(false)
   const [showWorkbench, setShowWorkbench] = useState(() => {
     try {
       return localStorage.getItem('wb-open') !== '0'
@@ -183,9 +188,23 @@ export function App() {
       api.onOpenConversation((id) => {
         void reloadConversations().then(() => setActiveId(id))
       }),
-      api.onOpenPanel((panel) => (panel === 'routines' ? setShowRoutines(true) : setShowSettings(true))),
+      api.onOpenPanel((panel) =>
+        panel === 'routines'
+          ? setShowRoutines(true)
+          : panel === 'projects'
+            ? setShowProjects(true)
+            : panel === 'onboarding'
+              ? setOnboarding(true)
+              : setShowSettings(true)
+      ),
       api.onSettingsChanged(setSettings)
     ]
+    const setup = () => {
+      setShowSettings(false)
+      setOnboarding(true)
+    }
+    window.addEventListener('jarvis:onboarding', setup)
+    offs.push(() => window.removeEventListener('jarvis:onboarding', setup))
     return () => offs.forEach((o) => o())
   }, [reloadConversations])
 
@@ -543,6 +562,29 @@ export function App() {
     [settings, convs, active?.cwd, providers, send]
   )
 
+  /** New read-only chat about a project (in its folder), e.g. "Catch me up on kosoku". */
+  const askAbout = useCallback(
+    async (prompt: string, cwd?: string) => {
+      if (!settings) return
+      setShowProjects(false)
+      const conv: Conversation = {
+        id: uid(),
+        title: prompt.split(':')[0].slice(0, 60),
+        provider: providerStatus('claude')?.available ? 'claude' : (providers.find((p) => p.available)?.id ?? 'claude'),
+        modeId: 'general',
+        cwd: cwd ?? settings.defaultCwd,
+        autonomy: 'ask',
+        sessions: {},
+        messages: [],
+        updatedAt: Date.now()
+      }
+      setConvs((prev) => [conv, ...prev])
+      setActiveId(conv.id)
+      await send(prompt, conv)
+    },
+    [settings, providers, send]
+  )
+
   const prCandidate =
     active?.linear && !active.linear.prLinked && !dismissedPr.has(active.id) && !activeRun ? findPrUrl(active) : null
 
@@ -622,6 +664,16 @@ export function App() {
   )
 
   if (!settings) return <div className="boot">Starting Jarvis…</div>
+  if (!settings.onboardedAt || onboarding)
+    return (
+      <Onboarding
+        settings={settings}
+        onDone={(next) => {
+          setSettings(next)
+          setOnboarding(false)
+        }}
+      />
+    )
 
   return (
     <div className={`app ${showWorkbench && active ? 'with-wb' : ''}`}>
@@ -669,6 +721,9 @@ export function App() {
               </div>
             ))}
           </div>
+          <button className="ghost" onClick={() => setShowProjects(true)}>
+            Projects
+          </button>
           <button className="ghost" onClick={() => setShowMemory(true)}>
             Memory
           </button>
@@ -766,6 +821,7 @@ export function App() {
                 {currentMode?.description ??
                   'Runs on your machine through Claude Code, Codex and local Ollama models — using your own subscriptions.'}
               </p>
+              <HomeDigest onAsk={(p, cwd) => void askAbout(p, cwd)} onOpen={() => setShowProjects(true)} />
               <p className="hint">
                 <kbd>{prettyKey(settings.quickHotkey)}</kbd> quick ask · <kbd>{prettyKey(settings.voiceHotkey)}</kbd> talk ·{' '}
                 <kbd>{prettyKey(settings.liveHotkey)}</kbd> live conversation · <kbd>⌘D</kbd> dictate ·{' '}
@@ -904,6 +960,10 @@ export function App() {
       )}
 
       {showMemory && <MemoryPanel onClose={() => setShowMemory(false)} />}
+
+      {showProjects && (
+        <ProjectsPanel settings={settings} onClose={() => setShowProjects(false)} onAsk={(p, cwd) => void askAbout(p, cwd)} />
+      )}
 
       {showRoutines && (
         <RoutinesPanel

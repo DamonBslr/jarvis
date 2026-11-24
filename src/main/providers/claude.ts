@@ -67,6 +67,11 @@ export const claudeProvider: Provider = {
             'mcp__jarvis__linear_my_issues',
             'mcp__jarvis__linear_get_issue',
             'mcp__jarvis__connections_list',
+            'mcp__jarvis__projects_overview',
+            'mcp__jarvis__project_brief',
+            'mcp__jarvis__knowledge_search',
+            'mcp__jarvis__recent_activity',
+            'mcp__jarvis__open_loops',
             'mcp__jarvis__connect_service'
           ]
         : []),

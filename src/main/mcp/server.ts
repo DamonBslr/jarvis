@@ -9,6 +9,7 @@ import { loadShellEnv } from '../shellEnv'
 import { embed } from '../memory/embed'
 import { addMemory, searchMemories } from '../memory/memories'
 import { searchChunks } from '../memory/knowledge'
+import { knowledgeTool } from '../knowledge/tools'
 import * as linear from '../integrations/linear'
 import { getSecret } from '../secrets'
 import { computerTool } from '../tools/computer/defs'
@@ -95,10 +96,17 @@ async function handleTool(name: string, args: any, runId: string, deps: BridgeDe
       const vec = (await embed([q], settings))?.[0] ?? null
       const mems = searchMemories(q, vec, settings, 10).map((r) => `[${r.item.type}] ${r.item.content}`)
       const docs = searchChunks(q, vec, settings, 4).map((c) => `--- ${c.source}/${c.path}\n${c.text.slice(0, 1500)}`)
-      return [mems.length ? 'Memories:\n' + mems.join('\n') : 'No matching memories.', docs.join('\n\n')]
+      const activity = await knowledgeTool('knowledge_search', { query: q, limit: 6 }, settings, vec)
+      return [mems.length ? 'Memories:\n' + mems.join('\n') : 'No matching memories.', docs.join('\n\n'), activity.startsWith('No ') ? '' : activity]
         .filter(Boolean)
         .join('\n\n')
     }
+    case 'projects_overview':
+    case 'project_brief':
+    case 'knowledge_search':
+    case 'recent_activity':
+    case 'open_loops':
+      return knowledgeTool(name, args, settings)
     case 'remember': {
       const m = addMemory({ type: args.type, content: String(args.content ?? ''), source: 'agent' }, settings)
       return `Saved memory #${m.id}`

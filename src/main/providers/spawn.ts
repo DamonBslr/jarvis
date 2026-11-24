@@ -89,6 +89,16 @@ export function stderrSummary(tail: string): string {
   return lines.slice(-6).join('\n') || 'process exited with an error'
 }
 
+function jsonError(out: string): string {
+  const last = out.trim().split('\n').pop() ?? ''
+  try {
+    const d = JSON.parse(last) as { result?: unknown; error?: unknown }
+    return String(d.result ?? d.error ?? '').slice(0, 300)
+  } catch {
+    return last.slice(0, 300)
+  }
+}
+
 /** Run a command to completion with stdin, returning stdout (rejects on non-zero exit or timeout). */
 export function runOnce(
   cmd: string,
@@ -112,7 +122,8 @@ export function runOnce(
     child.on('close', (code) => {
       clearTimeout(timer)
       if (code === 0) resolve(out)
-      else reject(new Error(stderrSummary(err) || `${cmd} exited ${code}`))
+      // CLIs in JSON mode (claude -p) put the error in stdout and leave stderr empty.
+      else reject(new Error(err.trim() ? stderrSummary(err) : jsonError(out) || `${cmd} exited ${code}`))
     })
     child.stdin.end(opts.stdin ?? '')
   })

@@ -169,6 +169,28 @@ export async function t3Tools(ctx: ToolContext): Promise<ToolContribution | null
   }
 }
 
+/**
+ * The signed-in T3 MCP endpoint for Jarvis's own background reads (knowledge sync), sharing the
+ * agents' session and cache. null when T3 tools are off or T3 isn't running.
+ */
+export async function t3Endpoint(env: NodeJS.ProcessEnv, settings: ToolContext['settings']): Promise<{ url: string; token: string } | null> {
+  if (!settings.t3Tools) return null
+  const now = Date.now()
+  if (cache && now - cache.at < (cache.value ? CACHE_MS : CACHE_NULL_MS)) return cache.value && { url: cache.value.url, token: cache.value.token }
+  const access = (settings as { t3Access?: T3Access }).t3Access ?? DEFAULT_ACCESS
+  inflight ??= connect(env, access, (m) => console.log(`[t3] ${m}`)).finally(() => {
+    inflight = null
+  })
+  try {
+    const value = await inflight
+    cache = { at: Date.now(), value }
+    return value && { url: value.url, token: value.token }
+  } catch (err) {
+    cache = { at: Date.now(), value: null }
+    throw err
+  }
+}
+
 /** Revoke Jarvis's T3 session and forget the token (e.g. when the user turns `t3Tools` off). */
 export async function disconnectT3(env: NodeJS.ProcessEnv): Promise<void> {
   cache = null

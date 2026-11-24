@@ -94,7 +94,7 @@ export async function startRun(req: RunRequest, sink: RunSink, owner: WebContent
 
   if (settings.useMemory) {
     try {
-      const ctx = await buildContext(req.prompt, settings)
+      const ctx = await buildContext(req.prompt, settings, { cwd: req.cwd, env })
       if (ctx) {
         req = { ...req, context: [req.context, ctx.text].filter(Boolean).join('\n\n') }
         send({ kind: 'context', items: ctx.refs })
@@ -106,7 +106,7 @@ export async function startRun(req: RunRequest, sink: RunSink, owner: WebContent
 
   // Jarvis tools for the agent: memory + Linear always, approval popups for Claude when someone can answer.
   if (req.provider !== 'ollama') {
-    const groups = ['memory', 'linear', 'connections', ...(req.provider === 'claude' && owner ? ['approve'] : [])]
+    const groups = ['memory', 'knowledge', 'linear', 'connections', ...(req.provider === 'claude' && owner ? ['approve'] : [])]
     req = { ...req, mcp: bridgeLaunch(req.runId, groups) }
     // Optional capabilities (browser, computer use, T3 Code behind settings; connected services always).
     const tools = await collectTools({ settings, req, env, interactive: !!owner }, (message) =>
