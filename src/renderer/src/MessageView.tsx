@@ -1,11 +1,38 @@
-import { memo, useState } from 'react'
+import { isValidElement, memo, useRef, useState, type ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ChatMessage, MessagePart } from '@shared/types'
-import { IconBrain, IconChevronRight, ToolIcon } from './icons'
+import { IconBrain, IconCheck, IconChevronRight, IconCopy, ToolIcon } from './icons'
 
 const PROVIDER_LABEL = { claude: 'Claude Code', codex: 'Codex', ollama: 'Ollama' } as const
 const MODE_LABEL: Record<string, string> = { general: 'Jarvis', code: 'Code · Git · Linear', local: 'Local quick' }
+
+/** Fenced code block with a language label and a copy button. */
+function CodeBlock({ children }: { children?: ReactNode }) {
+  const ref = useRef<HTMLPreElement>(null)
+  const [copied, setCopied] = useState(false)
+  const cls = isValidElement<{ className?: string }>(children) ? (children.props.className ?? '') : ''
+  const lang = /language-([\w+-]+)/.exec(cls)?.[1]
+  const copy = () => {
+    void navigator.clipboard.writeText(ref.current?.textContent ?? '').then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1400)
+    })
+  }
+  return (
+    <div className="codeblock">
+      <div className="codeblock-head">
+        <span>{lang ?? 'code'}</span>
+        <button className="codeblock-copy" onClick={copy} title="Copy code">
+          {copied ? <IconCheck size={13} /> : <IconCopy size={13} />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <pre ref={ref}>{children}</pre>
+    </div>
+  )
+}
+const MD_COMPONENTS = { pre: CodeBlock }
 
 function ContextChip({ items }: { items: NonNullable<ChatMessage['context']> }) {
   const [open, setOpen] = useState(false)
@@ -136,7 +163,7 @@ export const MessageView = memo(function MessageView({
             }
           >
             {MODE_LABEL[message.route.modeId] ?? message.route.modeId}
-            {message.route.via === 'jev' ? ` · ${Math.round(message.route.confidence * 100)}% jev` : ' · heuristic'}
+            {message.route.via === 'jev' ? ` · ${Math.round(message.route.confidence * 100)}%` : ' · heuristic'}
           </span>
         )}
         {message.context && message.context.length > 0 && <ContextChip items={message.context} />}
@@ -153,7 +180,9 @@ export const MessageView = memo(function MessageView({
         if (g.type === 'text')
           return (
             <div className="md" key={i}>
-              <Markdown remarkPlugins={[remarkGfm]}>{g.text}</Markdown>
+              <Markdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+                {g.text}
+              </Markdown>
             </div>
           )
         return <Thinking key={i} text={g.text} />

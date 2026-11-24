@@ -146,7 +146,7 @@ function ConnectionRow({ c, onError }: { c: ConnectionStatus; onError: (msg: str
               </button>
             </>
           ) : (
-            <button className="ghost" onClick={() => setConfirmRemove(true)}>
+            <button className="ghost danger-hover" onClick={() => setConfirmRemove(true)}>
               Remove
             </button>
           )}

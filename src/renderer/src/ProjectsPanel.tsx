@@ -56,6 +56,9 @@ export function ProjectsPanel({
             <button className="ghost" disabled={!!progress && progress.phase !== 'done'} onClick={() => void api.knowledge.sync()}>
               Sync now
             </button>
+            <button className="icon panel-close" onClick={onClose} title="Close (Esc)" aria-label="Close">
+              <IconX size={14} />
+            </button>
           </div>
         </div>
 
@@ -116,11 +119,6 @@ export function ProjectsPanel({
           </div>
         </div>
 
-        <div className="panel-actions">
-          <button className="ghost" onClick={onClose}>
-            Close
-          </button>
-        </div>
       </div>
     </div>
   )

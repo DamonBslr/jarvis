@@ -629,6 +629,8 @@ export function App() {
   }, [activeRun])
 
   // Global keys
+  const panelOpen = showSettings || showMemory || showRoutines || showProjects
+  const approvalOpen = approvals.length > 0
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey && e.key.toLowerCase() === 'b') {
@@ -640,6 +642,12 @@ export function App() {
       } else if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'd') {
         e.preventDefault()
         void dictate()
+      } else if (e.key === 'Escape' && panelOpen && !approvalOpen) {
+        // Esc closes the open panel before it stops anything running.
+        setShowSettings(false)
+        setShowMemory(false)
+        setShowRoutines(false)
+        setShowProjects(false)
       } else if (e.key === 'Escape' && liveRef.current) {
         // First Esc stops the answer, the next ends live mode.
         const phase = liveRef.current.current
@@ -653,7 +661,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [newConversation, cancel, activeRun, dictate, stopLive])
+  }, [newConversation, cancel, activeRun, dictate, stopLive, panelOpen, approvalOpen])
 
   const removeConversation = async (id: string) => {
     const r = runs[id]
@@ -698,6 +706,8 @@ export function App() {
         }}
       />
     )
+
+  const isEmpty = !active || active.messages.length === 0
 
   return (
     <div className={`app ${showWorkbench && active ? 'with-wb' : ''}`}>
@@ -768,7 +778,7 @@ export function App() {
         </div>
       </aside>
 
-      <main className="main">
+      <main className={`main ${isEmpty ? 'is-empty' : ''}`}>
         <header className="topbar drag">
           {active ? (
             <div className="controls no-drag">
@@ -846,7 +856,7 @@ export function App() {
         </header>
 
         <div className="messages" ref={scrollRef}>
-          {!active || active.messages.length === 0 ? (
+          {isEmpty ? (
             <div className="empty">
               <div className="empty-orb" />
               <h1>{greeting(settings.userName)}</h1>
@@ -855,21 +865,6 @@ export function App() {
                   'Runs on your machine through Claude Code, Codex and local Ollama models — using your own subscriptions.'}
               </p>
               <HomeDigest onAsk={(p, cwd) => void askAbout(p, cwd)} onOpen={() => setShowProjects(true)} />
-              <div className="hint">
-                {(
-                  [
-                    [settings.quickHotkey, 'Quick ask'],
-                    [settings.voiceHotkey, 'Talk'],
-                    [settings.liveHotkey, 'Live'],
-                    ['⌘D', 'Dictate'],
-                    ['Esc', 'Stop a run']
-                  ] as const
-                ).map(([k, label]) => (
-                  <span key={label} className="hint-item">
-                    <kbd>{prettyKey(k)}</kbd> {label}
-                  </span>
-                ))}
-              </div>
             </div>
           ) : (
             active.messages.map((m) => (
@@ -977,6 +972,23 @@ export function App() {
                   <IconArrowUp size={16} />
                 </button>
               )}
+            </div>
+          )}
+          {isEmpty && !live && (
+            <div className="hint">
+              {(
+                [
+                  [settings.quickHotkey, 'Quick ask'],
+                  [settings.voiceHotkey, 'Talk'],
+                  [settings.liveHotkey, 'Live'],
+                  ['⌘D', 'Dictate'],
+                  ['Esc', 'Stop a run']
+                ] as const
+              ).map(([k, label]) => (
+                <span key={label} className="hint-item">
+                  <kbd>{prettyKey(k)}</kbd> {label}
+                </span>
+              ))}
             </div>
           )}
         </footer>

@@ -429,13 +429,16 @@ export function SettingsPanel({
       <div className="panel settings" onClick={(e) => e.stopPropagation()}>
         <div className="panel-head">
           <h2>Settings</h2>
-          <div className="tabs">
-            {(['general', 'memory', 'voice', 'tools', 'connections', 'shortcuts', 'app'] as Tab[]).map((t) => (
-              <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-                {t}
-              </button>
-            ))}
-          </div>
+          <button className="icon panel-close" onClick={onClose} title="Close (Esc)" aria-label="Close">
+            <IconX size={14} />
+          </button>
+        </div>
+        <div className="tabs settings-tabs">
+          {(['general', 'memory', 'voice', 'tools', 'connections', 'shortcuts', 'app'] as Tab[]).map((t) => (
+            <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
+              {t}
+            </button>
+          ))}
         </div>
 
         <div className="settings-body">

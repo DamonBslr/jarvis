@@ -256,8 +256,8 @@ export function RoutinesPanel({
       <div className="panel routines" onClick={(e) => e.stopPropagation()}>
         <div className="panel-head">
           <h2>Routines</h2>
-          <button className="icon" onClick={onClose}>
-            <IconX size={13} />
+<button className="icon panel-close" onClick={onClose} title="Close (Esc)" aria-label="Close">
+            <IconX size={14} />
           </button>
         </div>
         <p className="panel-sub">

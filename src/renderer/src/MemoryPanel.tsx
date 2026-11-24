@@ -114,6 +114,9 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
               </button>
             ))}
           </div>
+          <button className="icon panel-close" onClick={onClose} title="Close (Esc)" aria-label="Close">
+            <IconX size={14} />
+          </button>
         </div>
 
         {tab === 'memories' && (
@@ -231,11 +234,6 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        <div className="panel-actions">
-          <button className="ghost" onClick={onClose}>
-            Close
-          </button>
-        </div>
       </div>
     </div>
   )

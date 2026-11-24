@@ -99,7 +99,7 @@ function GitTab({
       )}
 
       <div className="wb-actions">
-        <button disabled={busy || !files.length} onClick={() => onAsk('Review the uncommitted changes, then commit them with a clear conventional commit message. Group into separate commits if they are unrelated.')}>
+        <button className="wb-primary" disabled={busy || !files.length} onClick={() => onAsk('Review the uncommitted changes, then commit them with a clear conventional commit message. Group into separate commits if they are unrelated.')}>
           Commit
         </button>
         <button disabled={busy} onClick={() => onAsk(pr ? `Push the latest commits to the existing PR #${pr.number} and summarize what changed.` : 'Push this branch and open a pull request with gh. Write a concise description and link any Linear issue this work belongs to.')}>
