@@ -545,22 +545,16 @@ input[type='range'] {
   background: var(--accent-fill-hover);
 }
 .primary:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px rgba(108, 200, 218, 0.45);
+  outline: 2px solid rgba(108, 200, 218, 0.5);
+  outline-offset: 2px;
 }
 .primary:active:not(:disabled) {
   transform: translateY(0.5px);
 }
 .primary:disabled {
-  background: var(--raised);
-  color: var(--faint);
-  box-shadow: inset 0 0 0 1px var(--line-soft);
+  opacity: 0.4;
+  box-shadow: none;
   cursor: default;
-}
-.primary:disabled kbd.on-primary {
-  color: var(--faint);
-  border-color: var(--line);
-  background: none;
 }
 
 .icon-btn {
@@ -1151,8 +1145,16 @@ input[type='range'] {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .composer-box:focus-within {
-  border-color: var(--accent-line);
-  box-shadow: var(--shadow-soft), var(--ring);
+  border-color: rgba(108, 200, 218, 0.45);
+  box-shadow: var(--shadow-soft), 0 0 0 3px rgba(108, 200, 218, 0.08);
+}
+.composer:focus-within .pr-banner {
+  border-color: rgba(108, 200, 218, 0.45);
+}
+.pr-banner + .composer-box,
+.pr-banner + .composer-box:focus-within {
+  border-top-color: var(--line-soft);
+  box-shadow: var(--shadow-soft);
 }
 .composer textarea {
   flex: 1;
@@ -1564,6 +1566,7 @@ button.chip:hover {
   margin-right: -6px;
 }
 .panel-sub {
+  text-wrap: pretty;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
@@ -1673,11 +1676,31 @@ button.chip:hover {
   border-color: var(--line-soft);
   background-size: 14px;
 }
-.mem-row .icon:not(.on):not(.del) {
-  opacity: 0.35;
+.mem-row .icon:not(.on) {
+  opacity: 0;
+  transition: opacity 0.12s;
 }
-.mem-row:hover .icon:not(.on):not(.del) {
-  opacity: 0.8;
+.mem-row:hover .icon,
+.mem-row:focus-within .icon {
+  opacity: 1;
+}
+.mem-meta .mem-type {
+  display: inline;
+  vertical-align: baseline;
+  line-height: inherit;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0 !important;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text-2);
+  field-sizing: content;
+  cursor: pointer;
+}
+.mem-meta .mem-type:hover {
+  color: var(--accent);
 }
 .mem-content {
   flex: 1;
@@ -1805,13 +1828,13 @@ button.chip:hover {
 .ticket-chip {
   display: inline-flex;
   align-items: center;
-  height: 28px;
+  height: 30px;
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: 12px;
   padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--raised);
+  border-radius: var(--radius);
+  border: 0;
+  background: none;
   color: var(--text-2);
 }
 
@@ -1824,11 +1847,13 @@ button.chip:hover {
   border-left: 1px solid var(--line-soft);
 }
 .wb-tabs {
-  margin: 9px 14px 8px;
-  align-self: stretch;
+  margin: 12px 14px 8px;
+  align-self: flex-start;
+  padding: 2px;
 }
 .wb-tabs button {
-  flex: 1;
+  height: 24px;
+  padding: 0 12px;
 }
 .wb-body {
   flex: 1;
@@ -1948,7 +1973,7 @@ button.chip:hover {
 .wb-pr-meta {
   font-size: 12px;
   row-gap: 2px;
-  column-gap: 0;
+  column-gap: 10px;
 }
 .wb-pill {
   font-size: 12px;
@@ -1956,15 +1981,10 @@ button.chip:hover {
   color: var(--muted);
   white-space: nowrap;
 }
-.wb-pill + .wb-pill::before {
-  content: '·';
-  margin: 0 6px;
-  color: var(--faint);
-}
-.wb-pill.checks::after {
+
+.wb-pill.checks::before {
   content: '';
-  order: -1;
-  display: none;
+  display: inline-block;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -1982,12 +2002,25 @@ button.chip:hover {
   color: var(--warn);
 }
 .wb-actions {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   margin-bottom: 18px;
 }
-.wb-actions button {
+.wb-actions .wb-commit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  min-height: 28px;
+  line-height: 1;
+  padding: 0 16px;
+  margin-right: 4px;
+}
+.wb-actions .text-btn {
+  margin-left: auto;
+}
+.wb-actions button:not(.primary):not(.icon-btn):not(.text-btn) {
   height: 28px;
   font-size: 12px;
   font-weight: 500;
@@ -1997,7 +2030,7 @@ button.chip:hover {
   color: var(--text-2);
   transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
 }
-.wb-actions button:hover:not(:disabled) {
+.wb-actions button:not(.primary):not(.icon-btn):not(.text-btn):hover:not(:disabled) {
   border-color: var(--line-strong);
   background: var(--raised);
   color: var(--text);
@@ -2367,9 +2400,13 @@ button.chip:hover {
   white-space: pre-wrap;
 }
 kbd.on-primary {
-  border-color: rgba(255, 255, 255, 0.28);
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.85);
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.9);
+}
+button kbd {
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.07);
 }
 
 /* PR banner */
@@ -2504,7 +2541,7 @@ html.is-quick #root {
 .quick-mic {
   width: 30px;
   height: 30px;
-  border-radius: 50%;
+  border-radius: 9px;
   border: 1px solid var(--line);
   background: var(--raised);
   color: var(--muted);
@@ -3009,6 +3046,14 @@ html.is-quick .approval-overlay {
   align-self: flex-start;
   margin-top: 7px;
 }
+.conn-row .conn-actions > button:not(.primary) {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.conn-row:hover .conn-actions > button,
+.conn-row:focus-within .conn-actions > button {
+  opacity: 1;
+}
 .conn-actions select {
   field-sizing: content;
   max-width: 180px;
@@ -3179,7 +3224,6 @@ button.danger {
   justify-content: space-between;
   gap: 16px;
   padding: 14px 20px 14px 88px; /* clear the traffic lights */
-  border-bottom: 1px solid var(--line-soft);
 }
 .onboard-steps {
   display: flex;
@@ -3207,6 +3251,10 @@ button.danger {
 }
 .onboard-steps li.done {
   color: var(--muted);
+}
+.onboard-steps li.done::before {
+  content: '✓  ';
+  color: var(--ok);
 }
 .onboard-top .link {
   color: var(--muted);
@@ -3633,7 +3681,7 @@ button.danger {
 /* ---------- Projects panel ---------- */
 .projects-panel {
   width: min(960px, calc(100vw - 32px));
-  height: min(760px, calc(100vh - 64px));
+  height: min(640px, 80vh);
   display: flex;
   flex-direction: column;
 }
@@ -3684,6 +3732,11 @@ button.danger {
   padding: 6px 8px;
   border-radius: 7px;
   font-size: 13px;
+}
+.proj-nav-item.action {
+  justify-content: flex-start;
+  gap: 8px;
+  color: var(--faint);
 }
 .proj-nav-item:hover {
   color: var(--text);

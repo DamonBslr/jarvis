@@ -68,9 +68,9 @@ export function Onboarding({ settings, onDone }: { settings: Settings; onDone(ne
             <div className="empty-orb" />
             <h1>Let's make me yours.</h1>
             <p>
-              I live on this Mac and learn from the tools you already use: your repos, pull requests, tickets and the threads you run
-              with coding agents. You choose what I can read. It stays in a local database on this Mac. The only exception: I send
-              summaries of your focus projects to your own Claude subscription to write their briefs.
+              I live on this Mac and learn from your repos, pull requests, tickets and agent threads, only the ones you choose.
+              Everything stays in a local database here, except project summaries I send to your own Claude subscription to write
+              briefs.
             </p>
             <label className="field">
               What should I call you?

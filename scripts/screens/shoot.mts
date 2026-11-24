@@ -95,6 +95,7 @@ for (const s of scenes) {
     errors.push(`prep: ${(e as Error).message.split('\n')[0]}`)
   }
   await page.waitForTimeout(500)
+  if (process.env.EVAL) console.log(await page.evaluate(process.env.EVAL))
   await page.evaluate(s.size ? quickBackdrop : trafficLights)
   await page.waitForTimeout(50)
   await page.screenshot({ path: resolve(out, `${s.name}.png`) })

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ConnectionAuditEntry, ConnectionPolicy, ConnectionProbe, ConnectionStatus } from '@shared/types'
+import { timeAgo } from './knowledgeUi'
 
 const api = window.jarvis
 
@@ -18,14 +19,7 @@ const KIND_LABEL: Record<ConnectionStatus['kind'], string> = {
 
 const errText = (err: unknown) => (err instanceof Error ? err.message : String(err)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
-function ago(ts?: number) {
-  if (!ts) return ''
-  const s = Math.round((Date.now() - ts) / 1000)
-  if (s < 60) return 'just now'
-  if (s < 3600) return `${Math.round(s / 60)} min ago`
-  if (s < 86400) return `${Math.round(s / 3600)} h ago`
-  return `${Math.round(s / 86400)} d ago`
-}
+const ago = (ts?: number) => (ts ? timeAgo(ts) : '')
 
 function ConnectionRow({ c, onError }: { c: ConnectionStatus; onError: (msg: string) => void }) {
   const [busy, setBusy] = useState<string | null>(null)

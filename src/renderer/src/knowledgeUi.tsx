@@ -5,6 +5,15 @@ import { IconX } from './icons'
 
 const api = window.jarvis
 
+/** Short relative age, e.g. "2m ago" or "3d"; `git log --format=%ar` text ("2 minutes ago") is shortened the same way. */
+export function shortAge(text: string, withAgo = false): string {
+  const m = /^(\d+) (second|minute|hour|day|week|month|year)s?/.exec(text)
+  if (!m) return text
+  const unit = { second: 's', minute: 'm', hour: 'h', day: 'd', week: 'w', month: 'mo', year: 'y' }[m[2]]
+  return `${m[1]}${unit}${withAgo ? ' ago' : ''}`
+}
+
+/** Relative time used everywhere: "just now", "2m ago", "3h ago", "1d ago", then a date. */
 export function timeAgo(t?: number) {
   if (!t) return 'never'
   const s = (Date.now() - t) / 1000

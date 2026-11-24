@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { ProviderId, ProviderStatus, Routine, Settings } from '@shared/types'
 import { uid } from '@shared/chat'
 import { IconX } from './icons'
+import { timeAgo } from './knowledgeUi'
 
 const api = window.jarvis
 const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
@@ -66,14 +67,7 @@ function describe(r: Routine) {
   return `${days} at ${r.schedule.time}`
 }
 
-function ago(ts?: number) {
-  if (!ts) return 'never run'
-  const min = Math.round((Date.now() - ts) / 60000)
-  if (min < 1) return 'just now'
-  if (min < 60) return `${min} min ago`
-  if (min < 48 * 60) return `${Math.round(min / 60)} h ago`
-  return new Date(ts).toLocaleDateString()
-}
+const ago = (ts?: number) => (ts ? timeAgo(ts) : 'never run')
 
 function Editor({
   routine,
@@ -317,7 +311,7 @@ export function RoutinesPanel({
                     </div>
                   </div>
                   <button
-                    className="ghost small"
+                    className="text-btn"
                     disabled={r.running}
                     onClick={() => {
                       void api.routines.runNow(r.id)

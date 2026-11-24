@@ -602,21 +602,12 @@ export function SettingsPanel({
               ))}
             </div>
           )}
-          {tab === 'connections' ? (
-            // Connection changes apply immediately; Done still saves edits made on other tabs.
-            <button className="ghost" onClick={() => void save()}>
-              Done
-            </button>
-          ) : (
-            <>
-              <button className="ghost" onClick={onClose}>
-                Cancel
-              </button>
-              <button className="primary" onClick={() => void save()}>
-                Save
-              </button>
-            </>
-          )}
+          <button className="ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="primary" onClick={() => void save()}>
+            Save
+          </button>
         </div>
       </div>
     </div>

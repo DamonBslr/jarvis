@@ -1,34 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { KnowledgeSource, Memory, MemoryStatus, MemoryType } from '@shared/types'
 import { IconX } from './icons'
+import { timeAgo } from './knowledgeUi'
 
 const api = window.jarvis.memory
 const TYPES: MemoryType[] = ['profile', 'preference', 'workflow', 'project', 'person', 'fact']
 type Tab = 'memories' | 'knowledge' | 'status'
 
-function timeAgo(t?: number) {
-  if (!t) return 'never'
-  const s = (Date.now() - t) / 1000
-  if (s < 60) return 'just now'
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
-  return `${Math.floor(s / 86400)}d ago`
-}
 
 function MemoryRow({ m, onChange }: { m: Memory; onChange: () => void }) {
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(m.content)
   return (
     <div className={`mem-row ${m.pinned ? 'pinned' : ''}`}>
-      <select
-        className="mem-type"
-        value={m.type}
-        onChange={(e) => api.update(m.id, { type: e.target.value as MemoryType }).then(onChange)}
-      >
-        {TYPES.map((t) => (
-          <option key={t}>{t}</option>
-        ))}
-      </select>
       {editing ? (
         <input
           className="mem-edit"
@@ -51,6 +35,17 @@ function MemoryRow({ m, onChange }: { m: Memory; onChange: () => void }) {
         <div className="mem-content" onDoubleClick={() => setEditing(true)} title="Double-click to edit">
           {m.content}
           <span className="mem-meta">
+            <select
+              className="mem-type"
+              value={m.type}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => api.update(m.id, { type: e.target.value as MemoryType }).then(onChange)}
+            >
+              {TYPES.map((t) => (
+                <option key={t}>{t}</option>
+              ))}
+            </select>
+            {' · '}
             {m.source.startsWith('learned') ? 'learned' : m.source} · used {m.uses}× · {timeAgo(m.updatedAt)}
           </span>
         </div>

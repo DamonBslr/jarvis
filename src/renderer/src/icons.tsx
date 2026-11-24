@@ -152,6 +152,16 @@ export const IconCheck = (p: P) => (
     <path d="m5 12 5 5 9-10" />
   </Svg>
 )
+export const IconPush = (p: P) => (
+  <Svg {...p}>
+    <path d="M12 16V4M7 9l5-5 5 5M5 20h14" />
+  </Svg>
+)
+export const IconSync = (p: P) => (
+  <Svg {...p}>
+    <path d="M4 9h13l-3-3M20 15H7l3 3" />
+  </Svg>
+)
 export const IconCopy = (p: P) => (
   <Svg {...p}>
     <rect x="8" y="8" width="12" height="12" rx="2.5" />

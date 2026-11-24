@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { GitFile, GitStatus, LinearIssue, PullRequest } from '@shared/types'
-import { IconBranch, IconPr, IconRefresh, IconX } from './icons'
+import { IconBranch, IconPr, IconPush, IconRefresh, IconSync, IconX } from './icons'
+import { shortAge } from './knowledgeUi'
 
 const api = window.jarvis
 
@@ -88,9 +89,10 @@ function GitTab({
             <IconPr size={15} />
           </span>
           <span className="wb-pr-title">
-            {pr.title} <span className="wb-pr-num">#{pr.number}</span>
+            {pr.title}
           </span>
           <span className="wb-pr-meta">
+            <span className="wb-pill wb-pr-num">#{pr.number}</span>
             <span className="wb-pill">{pr.isDraft ? 'Draft' : pr.state.charAt(0) + pr.state.slice(1).toLowerCase()}</span>
             {pr.checks && <span className={`wb-pill checks ${pr.checks}`}>Checks {pr.checks}</span>}
             {pr.reviewDecision && <span className="wb-pill">{pr.reviewDecision.charAt(0) + pr.reviewDecision.slice(1).toLowerCase().replace(/_/g, ' ')}</span>}
@@ -99,16 +101,21 @@ function GitTab({
       )}
 
       <div className="wb-actions">
-        <button className="wb-primary" disabled={busy || !files.length} onClick={() => onAsk('Review the uncommitted changes, then commit them with a clear conventional commit message. Group into separate commits if they are unrelated.')}>
+        <button className="primary wb-commit" disabled={busy || !files.length} onClick={() => onAsk('Review the uncommitted changes, then commit them with a clear conventional commit message. Group into separate commits if they are unrelated.')}>
           Commit
         </button>
-        <button disabled={busy} onClick={() => onAsk(pr ? `Push the latest commits to the existing PR #${pr.number} and summarize what changed.` : 'Push this branch and open a pull request with gh. Write a concise description and link any Linear issue this work belongs to.')}>
-          {pr ? 'Push' : 'Open PR'}
+        <button
+          className="icon-btn"
+          title={pr ? `Push to #${pr.number}` : 'Push and open a pull request'}
+          aria-label={pr ? 'Push' : 'Open PR'}
+          disabled={busy}
+          onClick={() => onAsk(pr ? `Push the latest commits to the existing PR #${pr.number} and summarize what changed.` : 'Push this branch and open a pull request with gh. Write a concise description and link any Linear issue this work belongs to.')}>
+          <IconPush size={16} />
         </button>
-        <button disabled={busy} onClick={() => onAsk('Update this branch with the latest default branch (fetch, then rebase if the branch is unpushed, otherwise merge). Resolve simple conflicts; stop and ask me about anything non-trivial.')}>
-          Sync
+        <button className="icon-btn" title="Sync with the default branch" aria-label="Sync" disabled={busy} onClick={() => onAsk('Update this branch with the latest default branch (fetch, then rebase if the branch is unpushed, otherwise merge). Resolve simple conflicts; stop and ask me about anything non-trivial.')}>
+          <IconSync size={16} />
         </button>
-        <button disabled={busy || !files.length} onClick={() => onAsk('Review the current uncommitted diff like a senior engineer: bugs, risky changes, missing tests. Be concise; do not change files.')}>
+        <button className="text-btn" disabled={busy || !files.length} onClick={() => onAsk('Review the current uncommitted diff like a senior engineer: bugs, risky changes, missing tests. Be concise; do not change files.')}>
           Review
         </button>
       </div>
@@ -141,7 +148,7 @@ function GitTab({
           <div key={c.hash} className="wb-commit" title={`${c.author} · ${c.when}`}>
             <span className="wb-hash">{c.hash}</span>
             <span className="wb-subject">{c.subject}</span>
-            <span className="wb-when">{c.when.replace(' ago', '')}</span>
+            <span className="wb-when">{shortAge(c.when)}</span>
           </div>
         ))}
       </div>

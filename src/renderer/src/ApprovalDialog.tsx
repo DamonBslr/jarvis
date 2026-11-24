@@ -67,7 +67,7 @@ function ConnectDialog({
         {c.secretLabel && (
           <label className="approval-secret">
             {c.secretLabel}
-            <input type="password" autoFocus value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="Stored encrypted; the agent never sees it" />
+            <input type="password" autoFocus value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="Paste the token" />
           </label>
         )}
         <div className="panel-actions">
