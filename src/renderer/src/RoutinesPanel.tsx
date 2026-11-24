@@ -300,13 +300,22 @@ export function RoutinesPanel({
                       ) : (
                         ago(r.lastRunAt)
                       )}
+                      {r.lastConvId && (
+                        <>
+                          {' · '}
+                          <button
+                            className="link"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onOpen(r.lastConvId!)
+                            }}
+                          >
+                            Last result
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
-                  {r.lastConvId && (
-                    <button className="ghost small" onClick={() => onOpen(r.lastConvId!)}>
-                      Last result
-                    </button>
-                  )}
                   <button
                     className="ghost small"
                     disabled={r.running}

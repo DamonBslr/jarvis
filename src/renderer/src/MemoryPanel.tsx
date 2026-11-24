@@ -107,16 +107,16 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
       <div className="panel memory-panel" onClick={(e) => e.stopPropagation()}>
         <div className="panel-head">
           <h2>Memory</h2>
-          <div className="tabs">
-            {(['memories', 'knowledge', 'status'] as Tab[]).map((t) => (
-              <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-                {t}
-              </button>
-            ))}
-          </div>
           <button className="icon panel-close" onClick={onClose} title="Close (Esc)" aria-label="Close">
             <IconX size={14} />
           </button>
+        </div>
+        <div className="tabs panel-tabs">
+          {(['memories', 'knowledge', 'status'] as Tab[]).map((t) => (
+            <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
+              {t}
+            </button>
+          ))}
         </div>
 
         {tab === 'memories' && (

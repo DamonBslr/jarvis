@@ -328,10 +328,19 @@ export function App() {
   }, [updateConv])
 
   // Stick to bottom while streaming
+  const [scrolledUp, setScrolledUp] = useState(false)
+  const checkScroll = useCallback(() => {
+    const el = scrollRef.current
+    setScrolledUp(!!el && el.scrollHeight - el.scrollTop - el.clientHeight > 24)
+  }, [])
   useEffect(() => {
     const el = scrollRef.current
     if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 200) el.scrollTop = el.scrollHeight
-  }, [active?.messages])
+    checkScroll()
+    // Content can grow after this render (code blocks, fonts); re-check once laid out.
+    const raf = requestAnimationFrame(checkScroll)
+    return () => cancelAnimationFrame(raf)
+  }, [active?.messages, checkScroll])
 
   const newConversation = useCallback(() => {
     if (!settings) return
@@ -855,7 +864,7 @@ export function App() {
           </div>
         </header>
 
-        <div className="messages" ref={scrollRef}>
+        <div className={`messages ${scrolledUp ? 'scrolled-up' : ''}`} ref={scrollRef} onScroll={checkScroll}>
           {isEmpty ? (
             <div className="empty">
               <div className="empty-orb" />
@@ -873,27 +882,26 @@ export function App() {
           )}
         </div>
 
-        {prCandidate && active?.linear && (
-          <div className="pr-banner">
-            <span>
-              PR detected · link to <strong>{active.linear.identifier}</strong>
-              {settings.linearAutoMove ? ' and move to In Review' : ''}?
-            </span>
-            <button className="primary" disabled={linking} onClick={() => void linkPr()}>
-              {linking ? 'Linking…' : 'Link PR'}
-            </button>
-            <button className="ghost" onClick={() => setDismissedPr((s) => new Set(s).add(active.id))}>
-              Dismiss
-            </button>
-          </div>
-        )}
-
         <footer className="composer">
           {voiceNote && (
             <div className="voice-note">
               <span>{voiceNote}</span>
               <button className="icon" onClick={() => setVoiceNote(null)} title="Dismiss" aria-label="Dismiss">
                 <IconX size={13} />
+              </button>
+            </div>
+          )}
+          {prCandidate && active?.linear && (
+            <div className="pr-banner">
+              <span>
+                PR detected · link to <strong>{active.linear.identifier}</strong>
+                {settings.linearAutoMove ? ' and move to In Review' : ''}?
+              </span>
+              <button className="primary" disabled={linking} onClick={() => void linkPr()}>
+                {linking ? 'Linking…' : 'Link PR'}
+              </button>
+              <button className="ghost" onClick={() => setDismissedPr((s) => new Set(s).add(active.id))}>
+                Dismiss
               </button>
             </div>
           )}

@@ -3,9 +3,25 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ChatMessage, MessagePart } from '@shared/types'
 import { IconBrain, IconCheck, IconChevronRight, IconCopy, ToolIcon } from './icons'
+import { highlight } from './highlight'
 
 const PROVIDER_LABEL = { claude: 'Claude Code', codex: 'Codex', ollama: 'Ollama' } as const
 const MODE_LABEL: Record<string, string> = { general: 'Jarvis', code: 'Code · Git · Linear', local: 'Local quick' }
+
+/** Routing and cost details, shown as the agent name's tooltip to keep the header quiet. */
+function metaTitle(m: ChatMessage): string | undefined {
+  const lines: string[] = []
+  if (m.route) {
+    lines.push(
+      `Mode: ${MODE_LABEL[m.route.modeId] ?? m.route.modeId}` +
+        (m.route.via === 'jev' ? ` (${Math.round(m.route.confidence * 100)}% confident)` : ' (keyword heuristic)')
+    )
+    if (m.route.probabilities)
+      for (const [k, v] of Object.entries(m.route.probabilities)) lines.push(`  ${MODE_LABEL[k] ?? k}: ${Math.round(v * 100)}%`)
+  }
+  if (m.costUsd) lines.push(`Equivalent API cost: $${m.costUsd.toFixed(3)}`)
+  return lines.length ? lines.join('\n') : undefined
+}
 
 /** Fenced code block with a language label and a copy button. */
 function CodeBlock({ children }: { children?: ReactNode }) {
@@ -32,7 +48,13 @@ function CodeBlock({ children }: { children?: ReactNode }) {
     </div>
   )
 }
-const MD_COMPONENTS = { pre: CodeBlock }
+/** Highlights fenced code; inline code passes through unchanged. */
+function Code({ className, children }: { className?: string; children?: ReactNode }) {
+  const lang = /language-([\w+-]+)/.exec(className ?? '')?.[1]
+  if (!lang || typeof children !== 'string') return <code className={className}>{children}</code>
+  return <code className={className}>{highlight(children, lang)}</code>
+}
+const MD_COMPONENTS = { pre: CodeBlock, code: Code }
 
 function ContextChip({ items }: { items: NonNullable<ChatMessage['context']> }) {
   const [open, setOpen] = useState(false)
@@ -142,30 +164,10 @@ export const MessageView = memo(function MessageView({
   return (
     <div className="msg assistant">
       <div className="msg-meta">
-        <span className="who">
+        <span className="who" title={metaTitle(message)}>
           <span className="who-mark" data-provider={message.provider ?? 'jarvis'} />
           {message.provider ? PROVIDER_LABEL[message.provider] : 'Jarvis'}
         </span>
-        {message.costUsd !== undefined && message.costUsd > 0 && (
-          <span className="cost" title="Equivalent API cost reported by the CLI">
-            ≈${message.costUsd.toFixed(3)}
-          </span>
-        )}
-        {message.route && (
-          <span
-            className="chip static"
-            title={
-              message.route.probabilities
-                ? Object.entries(message.route.probabilities)
-                    .map(([k, v]) => `${MODE_LABEL[k] ?? k}: ${Math.round(v * 100)}%`)
-                    .join('\n')
-                : 'keyword heuristic (Jev offline)'
-            }
-          >
-            {MODE_LABEL[message.route.modeId] ?? message.route.modeId}
-            {message.route.via === 'jev' ? ` · ${Math.round(message.route.confidence * 100)}%` : ' · heuristic'}
-          </span>
-        )}
         {message.context && message.context.length > 0 && <ContextChip items={message.context} />}
       </div>
       {groupParts(message.parts).map((g, i) => {

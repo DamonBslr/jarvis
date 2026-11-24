@@ -215,6 +215,7 @@ function ProjectView({ digest, onAsk }: { digest: ProjectDigest; onAsk(prompt: s
               </button>
             </div>
             <div className="proj-fields">
+              <h3 className="settings-section">Project settings</h3>
               <label className="field">
                 <span>
                   Notes for Jarvis <span className="opt">goals, deadlines, who's involved</span>

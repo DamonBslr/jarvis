@@ -433,7 +433,7 @@ export function SettingsPanel({
             <IconX size={14} />
           </button>
         </div>
-        <div className="tabs settings-tabs">
+        <div className="tabs panel-tabs">
           {(['general', 'memory', 'voice', 'tools', 'connections', 'shortcuts', 'app'] as Tab[]).map((t) => (
             <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
               {t}
@@ -444,73 +444,82 @@ export function SettingsPanel({
         <div className="settings-body">
           {tab === 'general' && (
             <>
-              <label className="row check">
-                <input
-                  type="checkbox"
-                  checked={s.preferSubscription}
-                  onChange={(e) => setS({ ...s, preferSubscription: e.target.checked })}
-                />
-                <div>
-                  <div>Use my Claude subscription</div>
-                  <small>
-                    Hides <code>ANTHROPIC_API_KEY</code> from Claude Code so it uses your Pro/Max login instead of
-                    per-token API billing.
-                    {claude?.detail && <strong> {claude.detail}.</strong>}
-                  </small>
-                </div>
-              </label>
+              <h3 className="settings-section">Agents</h3>
+              <div className="form-group">
+                <label className="row check">
+                  <input
+                    type="checkbox"
+                    checked={s.preferSubscription}
+                    onChange={(e) => setS({ ...s, preferSubscription: e.target.checked })}
+                  />
+                  <div>
+                    <div>Use my Claude subscription</div>
+                    <small>
+                      Hides <code>ANTHROPIC_API_KEY</code> from Claude Code so it uses your Pro/Max login instead of
+                      per-token API billing.
+                      {claude?.detail && <strong> {claude.detail}.</strong>}
+                    </small>
+                  </div>
+                </label>
 
-              <label className="row">
-                <span>Default workspace (quick bar and new chats)</span>
-                <input value={s.defaultCwd} onChange={(e) => setS({ ...s, defaultCwd: e.target.value })} />
-              </label>
+                <label className="row">
+                  <span>Ollama URL</span>
+                  <input value={s.ollamaUrl} onChange={(e) => setS({ ...s, ollamaUrl: e.target.value })} />
+                </label>
+              </div>
 
-              <label className="row">
-                <span>Ollama URL</span>
-                <input value={s.ollamaUrl} onChange={(e) => setS({ ...s, ollamaUrl: e.target.value })} />
-              </label>
+              <h3 className="settings-section">Workspace</h3>
+              <div className="form-group">
+                <label className="row">
+                  <span>Default folder</span>
+                  <input value={s.defaultCwd} onChange={(e) => setS({ ...s, defaultCwd: e.target.value })} />
+                </label>
+              </div>
 
-              <label className="row check">
-                <input
-                  type="checkbox"
-                  checked={s.linearAutoMove}
-                  onChange={(e) => setS({ ...s, linearAutoMove: e.target.checked })}
-                />
-                <div>
-                  <div>Move Linear tickets automatically</div>
-                  <small>In Progress when you start work on a ticket, In Review when you link its PR.</small>
-                </div>
-              </label>
+              <h3 className="settings-section">Linear</h3>
+              <div className="form-group">
+                <label className="row check">
+                  <input
+                    type="checkbox"
+                    checked={s.linearAutoMove}
+                    onChange={(e) => setS({ ...s, linearAutoMove: e.target.checked })}
+                  />
+                  <div>
+                    <div>Move Linear tickets automatically</div>
+                    <small>In Progress when you start work on a ticket, In Review when you link its PR.</small>
+                  </div>
+                </label>
 
-              {Object.keys(s.linearRepoMap).length > 0 && (
-                <div className="row">
-                  <span>Linear team → repo</span>
-                  {Object.entries(s.linearRepoMap).map(([team, path]) => (
-                    <div key={team} className="repo-map">
-                      <code>{team}</code>
-                      <input
-                        value={path}
-                        onChange={(e) => setS({ ...s, linearRepoMap: { ...s.linearRepoMap, [team]: e.target.value } })}
-                      />
-                      <button
-                        className="icon del"
-                        onClick={() => {
-                          const next = { ...s.linearRepoMap }
-                          delete next[team]
-                          setS({ ...s, linearRepoMap: next })
-                        }}
-                      >
-                        <IconX size={13} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+                {Object.keys(s.linearRepoMap).length > 0 && (
+                  <div className="row">
+                    <span>Linear team → repo</span>
+                    {Object.entries(s.linearRepoMap).map(([team, path]) => (
+                      <div key={team} className="repo-map">
+                        <code>{team}</code>
+                        <input
+                          value={path}
+                          onChange={(e) => setS({ ...s, linearRepoMap: { ...s.linearRepoMap, [team]: e.target.value } })}
+                        />
+                        <button
+                          className="icon del"
+                          onClick={() => {
+                            const next = { ...s.linearRepoMap }
+                            delete next[team]
+                            setS({ ...s, linearRepoMap: next })
+                          }}
+                        >
+                          <IconX size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="provider-detail">
                 {providers.map((p) => (
                   <div key={p.id}>
-                    <strong>{p.id}</strong> — {p.available ? (p.version ?? 'online') : 'offline'}
+                    <strong>{p.id}</strong> <span className="ver">{p.available ? (p.version ?? 'online') : 'offline'}</span>
                     {p.detail && <small> · {p.detail}</small>}
                   </div>
                 ))}
@@ -593,12 +602,21 @@ export function SettingsPanel({
         </div>
 
         <div className="panel-actions">
-          <button className="ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="primary" onClick={() => void save()}>
-            Save
-          </button>
+          {tab === 'connections' ? (
+            // Connection changes apply immediately; Done still saves edits made on other tabs.
+            <button className="ghost" onClick={() => void save()}>
+              Done
+            </button>
+          ) : (
+            <>
+              <button className="ghost" onClick={onClose}>
+                Cancel
+              </button>
+              <button className="primary" onClick={() => void save()}>
+                Save
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
