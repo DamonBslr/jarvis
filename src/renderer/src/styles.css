@@ -2504,8 +2504,8 @@ html.is-quick #root {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 72px;
-  padding: 0 16px 0 20px;
+  height: 60px;
+  padding: 0 14px 0 18px;
   flex: none;
 }
 .quick.open .quick-row {
@@ -2546,7 +2546,7 @@ html.is-quick #root {
   background: none;
   border: 0;
   outline: none;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 400;
   letter-spacing: -0.01em;
   color: var(--text);
@@ -2837,7 +2837,7 @@ html.is-quick .approval-overlay {
   border-bottom: 0;
 }
 .routine-row.off .routine-name {
-  color: var(--muted);
+  color: var(--text);
 }
 .routine-main {
   flex: 1;
@@ -2997,11 +2997,8 @@ html.is-quick .approval-overlay {
   font-weight: 600;
 }
 .conn-kind {
-  font-size: 11px;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0 7px;
+  font-size: 12px;
+  color: var(--faint);
 }
 .conn-id {
   font-family: var(--mono);
@@ -4399,4 +4396,71 @@ button.tl-title {
 }
 .primary:disabled kbd {
   opacity: 0.7;
+}
+
+/* Round 6 (GPT): detail column, toolbar rhythm, quieter digest and banner, flat scrims */
+.proj-main {
+  max-width: 680px;
+}
+.controls {
+  gap: 4px;
+}
+.controls .ctl-sep {
+  margin: 0 10px;
+}
+.controls select:not(.ctl-engine):not(.ctl-mode),
+.folder {
+  font-size: 12.5px;
+  font-weight: 400;
+}
+.digest-chip {
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  margin-right: 14px;
+}
+.digest-chip:hover {
+  color: var(--accent);
+}
+.digest-chip .loop-count {
+  background: none;
+  padding: 0;
+  color: var(--faint);
+  font-size: 12px;
+}
+.digest-chip .loop-count::before {
+  content: '· ';
+}
+.pr-banner {
+  background: var(--panel);
+}
+.pr-banner .primary {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+  color: var(--accent-strong);
+}
+.pr-banner .primary:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+.overlay,
+.approval-overlay {
+  background: rgba(6, 7, 9, 0.42);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.overlay.page {
+  background: var(--bg);
+}
+.conn-row .setup-main > small:first-of-type {
+  font-size: 12px;
+  color: var(--faint);
+}
+.conn-tools summary {
+  color: var(--muted);
+}
+.mem-meta {
+  color: var(--muted);
+}
+.digest-chip .loop-count {
+  margin-left: -4px;
 }

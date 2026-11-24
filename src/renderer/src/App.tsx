@@ -816,7 +816,7 @@ export function App() {
               <select className="ctl-mode" value={active.modeId} onChange={(e) => setMode(e.target.value)} title="Mode">
                 {modes.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.name}
+                    {m.name.split(' · ')[0]}
                   </option>
                 ))}
               </select>

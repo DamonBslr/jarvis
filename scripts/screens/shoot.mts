@@ -75,7 +75,7 @@ const quickBackdrop = () => {
   document.body.style.padding = '24px'
   // macOS draws the panel's shadow (hasShadow: true); approximate it.
   const q = document.querySelector<HTMLElement>('.quick')
-  if (q) q.style.boxShadow = '0 22px 48px rgba(0,0,0,.45), 0 0 0 0.5px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.05)'
+  if (q) q.style.boxShadow = '0 22px 48px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.05)'
 }
 
 const only = process.env.SCENES?.split(',')
