@@ -58,7 +58,7 @@ function ConnectionRow({ c, onError }: { c: ConnectionStatus; onError: (msg: str
           <details className="conn-tools">
             <summary>
               {c.tools.length} {c.tools.length === 1 ? 'tool' : 'tools'} · {c.tools.length - writes} read-only, {writes} can change things
-              {c.lastUsedAt && <> · used {ago(c.lastUsedAt)}</>}
+              {c.lastUsedAt && <span className="conn-used">used {ago(c.lastUsedAt)}</span>}
             </summary>
             <div>
               {c.kind !== 'browser' && <code className="conn-id">mcp__{c.id}</code>}

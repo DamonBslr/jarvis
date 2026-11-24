@@ -4464,3 +4464,120 @@ button.tl-title {
 .digest-chip .loop-count {
   margin-left: -4px;
 }
+
+/* Round 7 (GPT) */
+/* Transcript/composer boundary: shorter fade, clear gap above the composer */
+.messages.scrolled-up {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+.composer {
+  padding-top: 12px;
+}
+.pr-banner {
+  min-height: 40px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+/* Comfortable prose measure; tools and code keep the full column */
+.msg.assistant .md > p,
+.msg.assistant .md > ul,
+.msg.assistant .md > ol,
+.msg.assistant .md > blockquote {
+  max-width: 72ch;
+}
+/* One 800px page width for every page */
+.overlay.page > .panel,
+.overlay.page > .projects-panel {
+  max-width: 800px;
+}
+.proj-body {
+  grid-template-columns: 184px 1fr;
+  gap: 24px;
+}
+.proj-main {
+  max-width: none;
+}
+.md.brief,
+.brief-foot {
+  max-width: none;
+}
+/* Settings: a vertical category list beside the content */
+.panel.settings {
+  display: grid;
+  grid-template-columns: 152px 1fr;
+  grid-template-rows: auto 1fr auto;
+  column-gap: 24px;
+}
+.panel.settings > .panel-head,
+.panel.settings > .panel-actions {
+  grid-column: 1 / -1;
+}
+.panel.settings > .panel-tabs {
+  flex-direction: column;
+  align-self: start;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+.panel.settings > .panel-tabs button {
+  height: 32px;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+  box-shadow: none;
+}
+.panel.settings > .panel-tabs button.active {
+  background: var(--active);
+  color: var(--text);
+}
+.panel.settings {
+  width: min(820px, calc(100vw - 32px));
+}
+/* Digest: distinct project groups */
+.digest-projects {
+  gap: 4px 20px;
+}
+.digest-chip {
+  gap: 6px;
+  margin-right: 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+.digest-chip .mem-meta,
+.digest-chip .loop-count {
+  font-size: 12px;
+  font-weight: 400;
+}
+/* Connections: brighter identity, usage at the end of the tools line */
+.conn-title strong {
+  color: var(--text);
+}
+.conn-tools summary {
+  display: flex;
+  width: 100%;
+  font-size: 12px;
+}
+.conn-used {
+  margin-left: auto;
+  color: var(--faint);
+}
+/* Quieter shortcut badges inside filled buttons */
+kbd.on-primary {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.8);
+}
+.primary,
+.ghost {
+  white-space: nowrap;
+}
+.overlay.page > .panel,
+.overlay.page > .projects-panel {
+  max-width: 880px;
+}
+.proj-body {
+  grid-template-columns: 172px 1fr;
+}
