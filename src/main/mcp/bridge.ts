@@ -5,6 +5,7 @@
  *
  *  - approve:   permission prompt for Claude Code (--permission-prompt-tool) -> popup in Jarvis
  *  - memory_*:  read/write the user's long-term memory
+ *  - knowledge: projects, briefs, open loops and activity search over everything Jarvis syncs
  *  - linear_*:  read/update Linear issues with the key stored in Jarvis
  *  - connections: list the services the user connected, and set up a new one with the user (popup, sign-in)
  *  - proxy mode (JARVIS_PROXY=<connection id>): this instance stands in for one remote MCP server the user
@@ -60,6 +61,56 @@ const TOOLS: Tool[] = [
       },
       required: ['type', 'content']
     }
+  },
+  {
+    name: 'projects_overview',
+    group: 'knowledge',
+    description:
+      "The user's focus projects (the few they actively work on) with each one's current state and open loops (reviews waiting, failing checks, stalled tickets, unfinished agent threads, uncommitted work). Start here for 'what's going on', 'what did I miss', planning the day.",
+    inputSchema: { type: 'object', properties: {} },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+  },
+  {
+    name: 'project_brief',
+    group: 'knowledge',
+    description:
+      "Everything Jarvis knows about one project: its living brief (what it is, current state, recent work, conventions), open loops and latest activity across git, GitHub, Linear, T3 threads and Claude Code/Codex sessions.",
+    inputSchema: { type: 'object', properties: { project: str('Project name, repo name or id') }, required: ['project'] },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+  },
+  {
+    name: 'knowledge_search',
+    group: 'knowledge',
+    description:
+      "Search the user's activity history: commits, pull requests, Linear issues, T3 threads, Claude Code and Codex sessions, Jarvis chats and project docs. Ranked by relevance, focus projects and recency. Use to find past work, decisions, 'when did I…', 'where did we leave…'.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: str('What to look for'),
+        project: str('Optional: limit to one project'),
+        source: { type: 'string', enum: ['git', 'github', 'linear', 't3', 'claude', 'codex', 'jarvis', 'docs'], description: 'Optional: one source' },
+        days: { type: 'number', description: 'Optional: only the last N days' }
+      },
+      required: ['query']
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+  },
+  {
+    name: 'recent_activity',
+    group: 'knowledge',
+    description: 'Chronological activity (newest first) for one project or all focus projects: commits, PRs, issues, agent sessions and threads.',
+    inputSchema: {
+      type: 'object',
+      properties: { project: str('Optional project; omit for all focus projects'), days: { type: 'number', description: 'Default 7' } }
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+  },
+  {
+    name: 'open_loops',
+    group: 'knowledge',
+    description: 'Things waiting on the user: review requests, PRs with failing checks or requested changes, quiet in-progress tickets, replies on their issues, T3 threads done/failed/waiting but not settled, agent sessions that ended on a question, uncommitted or unpushed work.',
+    inputSchema: { type: 'object', properties: { project: str('Optional: one project') } },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
   },
   {
     name: 'linear_my_issues',

@@ -91,7 +91,7 @@ export interface KnowledgeSource {
 }
 
 export interface ContextRef {
-  kind: 'memory' | 'chunk'
+  kind: 'memory' | 'chunk' | 'item' | 'project'
   id: number
   label: string
   score: number
@@ -350,6 +350,137 @@ export interface Settings {
   browserVisible: boolean
   /** Let agents talk to the local T3 Code app (threads, projects). */
   t3Tools: boolean
+  /** Set when the first-run setup finished (or was skipped). */
+  onboardedAt?: number
+  /** What the user calls themselves (from setup). */
+  userName?: string
+  /** Which knowledge sources Jarvis may read, by connector id. Missing = off. */
+  syncSources: Partial<Record<ConnectorId, boolean>>
+  /** Minutes between background syncs (0 = only on demand). */
+  syncIntervalMin: number
+  /** Write a living brief per focus project (uses the learning engine). */
+  projectBriefs: boolean
+  /** Folders that hold code repos, scanned for projects (e.g. ~/code). */
+  codeRoots: string[]
+}
+
+// ---- Knowledge: projects + activity from every connected source -----------------------------
+
+/** Sources Jarvis can learn from. Each is a local reader; nothing leaves the Mac except brief generation. */
+export type ConnectorId = 'git' | 'github' | 'linear' | 't3' | 'claude' | 'codex' | 'jarvis' | 'docs'
+
+export interface ConnectorInfo {
+  id: ConnectorId
+  name: string
+  /** What Jarvis reads from it, in one line. */
+  reads: string
+  /** Installed / signed in / reachable. */
+  available: boolean
+  detail?: string
+  /** Who Jarvis reads as (GitHub login, Linear name), when known. */
+  account?: string
+  enabled: boolean
+  /** How to make it available, when it isn't. */
+  setup?: { kind: 'command' | 'key' | 'toggle' | 'app'; hint: string }
+  sync?: SyncState
+}
+
+export interface SyncState {
+  status: 'idle' | 'syncing' | 'ok' | 'error'
+  syncedAt?: number
+  items?: number
+  error?: string
+}
+
+export interface Project {
+  /** Slug, stable. */
+  id: string
+  name: string
+  /** Local repo / folder. */
+  path?: string
+  /** owner/name on GitHub. */
+  github?: string
+  linearTeam?: string
+  linearProject?: string
+  t3ProjectId?: string
+  /** One of the projects the user is actively working on: indexed deeply, briefed, boosted in recall. */
+  focus: boolean
+  notes?: string
+  /** Living summary written by Jarvis (markdown). */
+  brief?: string
+  briefAt?: number
+  lastActivityAt?: number
+  createdAt: number
+}
+
+/** A discovered project with the signals that make it look active. */
+export interface ProjectCandidate {
+  path: string
+  name: string
+  github?: string
+  t3ProjectId?: string
+  /** Commits by the user in the last 30 days. */
+  commits30d: number
+  /** Agent sessions (Claude Code, Codex, T3 threads) in the last 30 days. */
+  sessions30d: number
+  lastActivityAt?: number
+  score: number
+  /** Already a project in Jarvis. */
+  known?: boolean
+  focus?: boolean
+}
+
+export type ItemKind = 'commit' | 'pr' | 'issue' | 'thread' | 'session' | 'chat' | 'doc' | 'worktree'
+
+export interface KnowledgeItem {
+  id: number
+  source: ConnectorId
+  kind: ItemKind
+  projectId?: string
+  title: string
+  body?: string
+  url?: string
+  state?: string
+  author?: string
+  at: number
+}
+
+export interface OpenLoop {
+  /** Stable key, so a loop can be dismissed. */
+  key: string
+  projectId?: string
+  source: ConnectorId
+  /** review = someone waits on you; stalled = you started and stopped; attention = needs a look. */
+  kind: 'review' | 'stalled' | 'attention' | 'uncommitted'
+  title: string
+  detail?: string
+  url?: string
+  at: number
+}
+
+export interface ProjectDigest {
+  project: Project
+  loops: OpenLoop[]
+  recent: KnowledgeItem[]
+  counts: { items: number; week: number }
+}
+
+export interface KnowledgeOverview {
+  projects: ProjectDigest[]
+  /** Loops not tied to a focus project. */
+  otherLoops: OpenLoop[]
+  /** Items since the user last looked, across focus projects. */
+  sinceLastSeen: number
+  lastSeenAt?: number
+  totalItems: number
+}
+
+export interface SyncProgress {
+  connector?: ConnectorId
+  phase: 'sync' | 'brief' | 'done'
+  message: string
+  /** 0..1 over the whole run. */
+  progress?: number
 }
 
 export type RoutineSchedule =
@@ -449,7 +580,7 @@ export interface JarvisApi {
   /** Conversations written by another window or a routine. */
   onConversationsChanged(cb: () => void): () => void
   onOpenConversation(cb: (convId: string) => void): () => void
-  onOpenPanel(cb: (panel: 'settings' | 'routines') => void): () => void
+  onOpenPanel(cb: (panel: 'settings' | 'routines' | 'projects' | 'onboarding') => void): () => void
   quick: {
     hide(): Promise<void>
     resize(height: number): Promise<void>
@@ -503,6 +634,29 @@ export interface JarvisApi {
     /** Open the site in Jarvis's browser profile so you can log in. */
     openBrowser(id: string): Promise<void>
     audit(limit?: number): Promise<ConnectionAuditEntry[]>
+    onChanged(cb: () => void): () => void
+  }
+  knowledge: {
+    connectors(): Promise<ConnectorInfo[]>
+    setSource(id: ConnectorId, enabled: boolean): Promise<void>
+    /** Scan code roots + agent history for active repos. */
+    discover(): Promise<ProjectCandidate[]>
+    projects(): Promise<Project[]>
+    /** Make these paths focus projects (creating them if needed); others lose focus. */
+    setFocus(paths: string[]): Promise<Project[]>
+    updateProject(id: string, patch: Partial<Pick<Project, 'name' | 'focus' | 'notes' | 'github' | 'linearTeam' | 'linearProject'>>): Promise<void>
+    removeProject(id: string): Promise<void>
+    /** Sync enabled sources now (all, or one); resolves when done. */
+    sync(id?: ConnectorId): Promise<void>
+    /** (Re)write briefs for focus projects (all, or one). */
+    brief(projectId?: string): Promise<void>
+    overview(): Promise<KnowledgeOverview>
+    timeline(projectId: string, limit?: number): Promise<KnowledgeItem[]>
+    search(query: string, projectId?: string): Promise<KnowledgeItem[]>
+    dismissLoop(key: string): Promise<void>
+    /** The user looked at the overview: resets "since you were away". */
+    markSeen(): Promise<void>
+    onProgress(cb: (p: SyncProgress) => void): () => void
     onChanged(cb: () => void): () => void
   }
   updates: {

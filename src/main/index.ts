@@ -9,6 +9,10 @@ import { jevHealth } from './classify/jev'
 import { probeEmbeddings } from './memory/embed'
 import * as mem from './memory/memories'
 import * as kb from './memory/knowledge'
+import * as knowledge from './knowledge'
+import * as kstore from './knowledge/store'
+import { dismissLoop } from './knowledge/loops'
+import { embed } from './memory/embed'
 import { startBridge } from './mcp/server'
 import { disconnectT3 } from './tools/t3'
 import * as connections from './connections'
@@ -107,7 +111,7 @@ function openConversation(convId: string) {
   else send()
 }
 
-function openPanel(panel: 'settings' | 'routines') {
+function openPanel(panel: 'settings' | 'routines' | 'projects' | 'onboarding') {
   const w = showMain()
   const send = () => setTimeout(() => w.webContents.send('jarvis:open-panel', panel), 300)
   if (w.webContents.isLoading()) w.webContents.once('did-finish-load', send)
@@ -350,6 +354,55 @@ function registerIpc() {
   )
   ipcMain.handle('connections:audit', (_e, limit?: number) => connections.readAudit(Math.min(Math.max(Number(limit) || 50, 1), 500)))
 
+  // Knowledge: connectors, focus projects, sync, briefs, overview
+  ipcMain.handle('knowledge:connectors', () => knowledge.connectorInfos())
+  ipcMain.handle('knowledge:setSource', async (_e, id, enabled: boolean) => {
+    if (!knowledge.connector(id)) throw new Error(`unknown source ${String(id)}`)
+    const s = await knowledge.setSource(id, !!enabled)
+    broadcast('jarvis:settings-changed', s)
+    if (enabled) void knowledge.sync({ only: id, briefs: false })
+  })
+  ipcMain.handle('knowledge:discover', () => knowledge.discover())
+  ipcMain.handle('knowledge:projects', () => kstore.listProjects())
+  ipcMain.handle('knowledge:setFocus', (_e, paths: unknown) =>
+    knowledge.setFocus(Array.isArray(paths) ? paths.filter((p): p is string => typeof p === 'string').slice(0, 12) : [])
+  )
+  ipcMain.handle('knowledge:updateProject', (_e, id: string, patch) => {
+    const { name, focus, notes, github, linearTeam, linearProject } = (patch ?? {}) as Record<string, unknown>
+    kstore.updateProject(String(id), {
+      name: typeof name === 'string' ? name : undefined,
+      focus: typeof focus === 'boolean' ? focus : undefined,
+      notes: typeof notes === 'string' ? notes : undefined,
+      github: typeof github === 'string' ? github : undefined,
+      linearTeam: typeof linearTeam === 'string' ? linearTeam : undefined,
+      linearProject: typeof linearProject === 'string' ? linearProject : undefined
+    })
+    broadcast('jarvis:knowledge-changed')
+  })
+  ipcMain.handle('knowledge:removeProject', (_e, id: string) => {
+    kstore.removeProject(String(id))
+    broadcast('jarvis:knowledge-changed')
+  })
+  ipcMain.handle('knowledge:sync', (_e, id?: string) =>
+    knowledge.sync(id && knowledge.connector(id as never) ? { only: id as never, briefs: false } : { briefs: true })
+  )
+  ipcMain.handle('knowledge:brief', (_e, projectId?: string) => knowledge.refreshBriefs(typeof projectId === 'string' ? projectId : undefined))
+  ipcMain.handle('knowledge:overview', () => knowledge.overview())
+  ipcMain.handle('knowledge:timeline', (_e, projectId: string, limit?: number) =>
+    kstore.recentItems({ projectId: String(projectId), limit: Math.min(Math.max(Number(limit) || 60, 1), 300) })
+  )
+  ipcMain.handle('knowledge:search', async (_e, query: string, projectId?: string) => {
+    const settings = await store.getSettings()
+    const q = String(query ?? '')
+    const vec = (await embed([q], settings))?.[0] ?? null
+    return kstore.searchItems(q, vec, settings, { projectId: projectId || undefined, limit: 30 }).map((h) => h.item)
+  })
+  ipcMain.handle('knowledge:dismissLoop', (_e, key: string) => {
+    dismissLoop(String(key))
+    broadcast('jarvis:knowledge-changed')
+  })
+  ipcMain.handle('knowledge:markSeen', () => knowledge.markSeen())
+
   // Updates
   ipcMain.handle('updates:state', () => updateState())
   ipcMain.handle('updates:check', () => checkForUpdates())
@@ -419,6 +472,10 @@ app.whenReady().then(async () => {
   lockDownPermissions()
   await startBridge({ settings: () => store.getSettings(), requestApproval })
   connections.onConnectionsChanged(() => broadcast('jarvis:connections-changed'))
+  knowledge.onKnowledgeEvents({
+    progress: (p) => broadcast('jarvis:knowledge-progress', p),
+    changed: () => broadcast('jarvis:knowledge-changed')
+  })
   registerIpc()
 
   const settings = await store.getSettings()
@@ -448,6 +505,7 @@ app.whenReady().then(async () => {
   })
   onActiveRunsChanged((n) => setTrayBusy(n > 0))
 
+  knowledge.startKnowledgeScheduler()
   routines.startScheduler(routineHooks, () => {
     broadcast('jarvis:routines-changed')
     void refreshTray()

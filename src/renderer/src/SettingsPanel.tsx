@@ -336,6 +336,30 @@ function AppTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
   }
   return (
     <>
+      <div className="row">
+        <div>Knowledge</div>
+        <label className="row check">
+          <input type="checkbox" checked={s.projectBriefs} onChange={(e) => setS({ ...s, projectBriefs: e.target.checked })} />
+          <div>
+            <div>Write project briefs</div>
+            <small>A living summary per focus project, written by the learning engine (Settings → Memory) after each sync that changed something.</small>
+          </div>
+        </label>
+        <label className="row inline-num">
+          Sync sources every
+          <input
+            type="number"
+            min={0}
+            max={240}
+            value={s.syncIntervalMin}
+            onChange={(e) => setS({ ...s, syncIntervalMin: Math.max(0, Math.min(240, Number(e.target.value) || 0)) })}
+          />
+          minutes (0 = only when you press Sync)
+        </label>
+        <button className="ghost" onClick={() => window.dispatchEvent(new CustomEvent('jarvis:onboarding'))}>
+          Run setup again…
+        </button>
+      </div>
       <label className="row check">
         <input type="checkbox" checked={s.menuBarOnly} onChange={(e) => setS({ ...s, menuBarOnly: e.target.checked })} />
         <div>

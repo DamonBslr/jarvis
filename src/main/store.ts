@@ -37,7 +37,12 @@ export const DEFAULT_SETTINGS: Settings = {
   computerUse: false,
   browserTool: true,
   browserVisible: true,
-  t3Tools: false
+  t3Tools: false,
+  // Local readers default on once the user finishes setup; setup shows each one for consent.
+  syncSources: {},
+  syncIntervalMin: 20,
+  projectBriefs: true,
+  codeRoots: []
 }
 
 async function atomicWrite(path: string, data: string) {

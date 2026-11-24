@@ -55,6 +55,54 @@ export function getDb(): DatabaseSync {
     );
     CREATE INDEX IF NOT EXISTS chunks_by_path ON chunks(source_id, path);
     CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(text, path UNINDEXED, tokenize = 'porter unicode61');
+
+    -- Knowledge graph: the user's projects and everything that happens in them, from every source.
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      path TEXT UNIQUE,
+      github TEXT,
+      linear_team TEXT,
+      linear_project TEXT,
+      t3_project_id TEXT,
+      focus INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      brief TEXT,
+      brief_at INTEGER,
+      brief_hash TEXT,
+      last_activity_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS items (
+      id INTEGER PRIMARY KEY,
+      uid TEXT NOT NULL UNIQUE,
+      source TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+      -- Repo root the item happened in (worktrees resolved), so items find their project later.
+      repo TEXT,
+      title TEXT NOT NULL,
+      body TEXT,
+      url TEXT,
+      state TEXT,
+      author TEXT,
+      at INTEGER NOT NULL,
+      meta TEXT,
+      embedding BLOB,
+      embed_model TEXT
+    );
+    CREATE INDEX IF NOT EXISTS items_by_project ON items(project_id, at DESC);
+    CREATE INDEX IF NOT EXISTS items_by_source ON items(source, at DESC);
+    CREATE INDEX IF NOT EXISTS items_by_repo ON items(repo);
+    CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(title, body, tokenize = 'porter unicode61');
+    CREATE TABLE IF NOT EXISTS sync_state (
+      source TEXT PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'idle',
+      synced_at INTEGER,
+      items INTEGER,
+      error TEXT
+    );
+    CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `)
   return db
 }

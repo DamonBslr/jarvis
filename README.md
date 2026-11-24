@@ -98,6 +98,35 @@ Jarvis keeps a local SQLite store (`~/Library/Application Support/jarvis/jarvis.
 - **Learning**: after each turn, Jev decides whether you said something worth remembering (`noul` question). If so, Claude Haiku runs with no tools, MCP, hooks or saved session, or a local Ollama model if you choose that, and returns add/update operations. Near-duplicates (cosine > 0.92) update the existing memory instead of adding a new one.
 - Manage everything in **Memory** (sidebar): edit, pin, forget, add folders, status.
 
+## Setup + projects: Jarvis knows your work
+
+First launch opens a 4-step setup (Settings → App → *Run setup again…* reopens it):
+
+1. **You**: your name and what you do. Saved as pinned profile memories.
+2. **Access**: every source is read-only and off until you click *Allow*. Missing tools show how to set them up (`gh auth login`, a Linear key field, "open T3 Code"). You can also add Mac folders (notes, docs) here.
+3. **Focus**: Jarvis ranks your repos by your commits and agent sessions over 30 days, and guesses your code folder from where agents ran. Pick the 4–7 you're actively on. Duplicate clones of the same GitHub repo aren't preselected.
+4. **Learn**: first sync, then a brief for each focus project.
+
+| Source | Reads |
+|---|---|
+| Git repos | commits (focus: everyone's; others: yours), branch, uncommitted files, branches whose commits exist on no remote. T3 checkpoint refs are ignored. |
+| Project docs | README, CLAUDE.md, AGENTS.md, docs/, package.json of focus projects |
+| T3 Code | threads per project with status (done/waiting/failed, settled or not); last messages for focus projects. Uses Jarvis's T3 sign-in. |
+| Claude Code / Codex history | `~/.claude/projects`, `~/.codex/sessions`: what you asked, in which repo (worktrees resolve to their repo), how it ended |
+| Jarvis chats | your own conversations |
+| GitHub (`gh`) | your PRs, review requests, assigned issues; every recent PR in focus repos with CI + review state |
+| Linear | issues assigned to, created by or followed by you, plus focus teams' issues (set the team key per project) |
+
+Everything lands in `jarvis.db` (`projects`, `items` + FTS5 + embeddings). Sync is incremental and runs every 20 minutes (Settings → App).
+
+- **Focus projects** get deep reads, a living **brief** (what it is, current state, recent work, open loops, conventions) written by the learning engine (Claude Sonnet on your subscription, or Ollama). A brief is rewritten only when its input changed, at most every 4 h. Failures (for example a usage limit) pause briefs for an hour and show up in the sync line.
+- **Open loops** are detected without a model: review requests, your PRs with failing checks, requested changes or 5+ quiet days, Linear replies waiting on you, quiet in-progress tickets, unsettled T3 threads (waiting/failed/done), recent agent sessions that ended on a question, uncommitted or local-only work. Dismiss one and it stays hidden until it changes.
+- **Recall**: every run gets the current project's brief and loops (from the workspace folder or a project name in the prompt), your focus list, and the most relevant activity. Ranking is BM25 + embeddings, boosted ×2 for the current project, ×1.5 for focus projects, and decayed by age. "What did I miss" and similar prompts also get an overview of every focus project.
+- **Agent tools** (read-only, no prompt): `projects_overview`, `project_brief`, `knowledge_search`, `recent_activity`, `open_loops`. `memory_search` also covers activity.
+- **UI**: sidebar → *Projects* (brief, open loops, searchable timeline, notes, Linear team, sources, change focus). New chats show a digest with *Catch me up*.
+
+Nothing leaves the Mac except the brief input, which goes to your own Claude subscription (or stays local with Ollama).
+
 ## Jev classifier
 
 [Jev-style](https://github.com/lawrence3699/jev-style) decision models answer `choice` / `noul` / `score` questions with probabilities through `POST /v1/systemone`. Jarvis uses Jev for:
@@ -146,6 +175,7 @@ JARVIS_DB_DIR=$(mktemp -d) npx tsx scripts/memory-test.mts          # memory, RA
 JARVIS_DB_DIR=$(mktemp -d) npx tsx scripts/memory-test.mts --learn  # + real learner call
 bun scripts/smoke.ts codex "prompt"                                  # provider adapters
 npx tsx scripts/integrations-test.mts                                 # git parser + Linear auth errors
+JARVIS_DB_DIR=$(mktemp -d) npx tsx scripts/knowledge-test.mts [--github] [--brief]  # discovery, sync, loops, recall on this Mac's data
 ```
 
 ## Layout
@@ -163,6 +193,7 @@ src/main/            Electron main: IPC + boot (index.ts)
   modes.ts           personas (+ Auto)
   classify/          Jev client + router
   memory/            SQLite store, embeddings, hybrid search, folder indexer, context builder, learner
+  knowledge/         projects + activity graph: connectors/, discover, sync orchestrator, loops, briefs, recall, agent tools
   mcp/               bridge.ts (stdio MCP server for agents) + server.ts (loopback endpoint, approvals)
   integrations/      git.ts (status/diff/PR via git + gh), linear.ts (GraphQL)
   secrets.ts         keychain-encrypted secrets

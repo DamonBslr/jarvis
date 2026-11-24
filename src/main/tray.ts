@@ -11,7 +11,7 @@ export interface TrayDeps {
   openQuick(voice: boolean): void
   live(): boolean
   toggleLive(): void
-  openPanel(panel: 'settings' | 'routines'): void
+  openPanel(panel: 'settings' | 'routines' | 'projects' | 'onboarding'): void
   runRoutine(id: string): void
   setWakeWord(on: boolean): void
   installUpdate(): void
@@ -73,6 +73,7 @@ export async function refreshTray() {
   else if (u.status === 'downloading')
     items.push({ label: `Downloading update… ${Math.round((u.progress ?? 0) * 100)}%`, enabled: false })
   items.push(
+    { label: 'Projects…', click: () => deps.openPanel('projects') },
     { label: 'Settings…', click: () => deps.openPanel('settings') },
     { label: 'Quit Jarvis', accelerator: 'CommandOrControl+Q', click: () => deps.quit() }
   )

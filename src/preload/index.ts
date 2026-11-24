@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AgentEvent, ApprovalRequest, JarvisApi, LearnedEvent, Settings, UpdateState, VoiceProgress } from '@shared/types'
+import type { AgentEvent, ApprovalRequest, JarvisApi, LearnedEvent, Settings, SyncProgress, UpdateState, VoiceProgress } from '@shared/types'
 
 function subscribe<T extends unknown[]>(channel: string, cb: (...args: T) => void) {
   const listener = (_: unknown, ...args: unknown[]) => cb(...(args as T))
@@ -55,7 +55,7 @@ const api: JarvisApi = {
   },
   onConversationsChanged: (cb) => subscribe<[]>('jarvis:conversations-changed', cb),
   onOpenConversation: (cb) => subscribe<[string]>('jarvis:open-conversation', cb),
-  onOpenPanel: (cb) => subscribe<['settings' | 'routines']>('jarvis:open-panel', cb),
+  onOpenPanel: (cb) => subscribe<['settings' | 'routines' | 'projects' | 'onboarding']>('jarvis:open-panel', cb),
   quick: {
     hide: () => ipcRenderer.invoke('quick:hide'),
     resize: (h) => ipcRenderer.invoke('quick:resize', h),
@@ -97,6 +97,24 @@ const api: JarvisApi = {
     openBrowser: (id) => ipcRenderer.invoke('connections:openBrowser', id),
     audit: (limit) => ipcRenderer.invoke('connections:audit', limit),
     onChanged: (cb) => subscribe<[]>('jarvis:connections-changed', cb)
+  },
+  knowledge: {
+    connectors: () => ipcRenderer.invoke('knowledge:connectors'),
+    setSource: (id, enabled) => ipcRenderer.invoke('knowledge:setSource', id, enabled),
+    discover: () => ipcRenderer.invoke('knowledge:discover'),
+    projects: () => ipcRenderer.invoke('knowledge:projects'),
+    setFocus: (paths) => ipcRenderer.invoke('knowledge:setFocus', paths),
+    updateProject: (id, patch) => ipcRenderer.invoke('knowledge:updateProject', id, patch),
+    removeProject: (id) => ipcRenderer.invoke('knowledge:removeProject', id),
+    sync: (id) => ipcRenderer.invoke('knowledge:sync', id),
+    brief: (projectId) => ipcRenderer.invoke('knowledge:brief', projectId),
+    overview: () => ipcRenderer.invoke('knowledge:overview'),
+    timeline: (projectId, limit) => ipcRenderer.invoke('knowledge:timeline', projectId, limit),
+    search: (q, projectId) => ipcRenderer.invoke('knowledge:search', q, projectId),
+    dismissLoop: (key) => ipcRenderer.invoke('knowledge:dismissLoop', key),
+    markSeen: () => ipcRenderer.invoke('knowledge:markSeen'),
+    onProgress: (cb) => subscribe<[SyncProgress]>('jarvis:knowledge-progress', cb),
+    onChanged: (cb) => subscribe<[]>('jarvis:knowledge-changed', cb)
   },
   updates: {
     state: () => ipcRenderer.invoke('updates:state'),
