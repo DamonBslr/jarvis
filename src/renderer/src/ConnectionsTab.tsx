@@ -55,7 +55,7 @@ function ConnectionRow({ c, onError }: { c: ConnectionStatus; onError: (msg: str
           <span className="conn-kind">{KIND_LABEL[c.kind]}</span>
           {c.kind !== 'browser' && <code className="conn-id">mcp__{c.id}</code>}
         </div>
-        <small>
+        <small title={c.issuer && c.kind === 'oauth' ? `Revoke anytime at ${new URL(c.issuer).host} (client "Jarvis"), or remove it here.` : undefined}>
           {c.url}
           {c.account && <> · as {c.account}</>}
           {c.lastUsedAt && <> · used {ago(c.lastUsedAt)}</>}
@@ -64,7 +64,7 @@ function ConnectionRow({ c, onError }: { c: ConnectionStatus; onError: (msg: str
         {c.tools && (
           <details className="conn-tools">
             <summary>
-              {c.tools.length} tools · {c.tools.length - writes} read-only, {writes} can change things
+              {c.tools.length} {c.tools.length === 1 ? 'tool' : 'tools'} · {c.tools.length - writes} read-only, {writes} can change things
             </summary>
             <div>
               {c.tools.map((t) => (
@@ -74,11 +74,6 @@ function ConnectionRow({ c, onError }: { c: ConnectionStatus; onError: (msg: str
               ))}
             </div>
           </details>
-        )}
-        {c.issuer && c.kind === 'oauth' && (
-          <small>
-            Revoke anytime at {new URL(c.issuer).host} (client "Jarvis"), or remove it here.
-          </small>
         )}
 
         {keyInput !== null && (
@@ -106,51 +101,50 @@ function ConnectionRow({ c, onError }: { c: ConnectionStatus; onError: (msg: str
             </button>
           </div>
         )}
-
-        <div className="conn-actions">
-          {c.kind !== 'browser' && (
-            <select
-              value={c.policy}
-              title="What agents may do with this connection"
-              onChange={(e) => void run('policy', () => api.connections.update(c.id, { policy: e.target.value as ConnectionPolicy }))}
-            >
-              {POLICIES.map(([v, label]) => (
-                <option key={v} value={v}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          )}
-          {c.kind === 'oauth' && (
-            <button className={c.state === 'needs-auth' ? 'primary' : 'ghost'} disabled={!!busy} onClick={() => void run('reconnect', () => api.connections.reconnect(c.id))}>
-              {busy === 'reconnect' ? 'Waiting for sign-in…' : 'Reconnect'}
+      </div>
+      <div className="conn-actions">
+        {c.kind !== 'browser' && (
+          <select
+            value={c.policy}
+            title="What agents may do with this connection"
+            onChange={(e) => void run('policy', () => api.connections.update(c.id, { policy: e.target.value as ConnectionPolicy }))}
+          >
+            {POLICIES.map(([v, label]) => (
+              <option key={v} value={v}>
+                {label}
+              </option>
+            ))}
+          </select>
+        )}
+        {c.kind === 'oauth' && (
+          <button className={c.state === 'needs-auth' ? 'primary' : 'ghost'} disabled={!!busy} onClick={() => void run('reconnect', () => api.connections.reconnect(c.id))}>
+            {busy === 'reconnect' ? 'Waiting for sign-in…' : 'Reconnect'}
+          </button>
+        )}
+        {c.kind === 'token' && keyInput === null && (
+          <button className={c.state === 'needs-auth' ? 'primary' : 'ghost'} onClick={() => setKeyInput('')}>
+            Replace key
+          </button>
+        )}
+        {c.kind === 'browser' && (
+          <button className="ghost" disabled={!!busy} onClick={() => void run('open', () => api.connections.openBrowser(c.id))}>
+            Open to log in
+          </button>
+        )}
+        {confirmRemove ? (
+          <>
+            <button className="danger" disabled={!!busy} onClick={() => void run('remove', () => api.connections.remove(c.id))}>
+              Remove {c.name}
             </button>
-          )}
-          {c.kind === 'token' && keyInput === null && (
-            <button className={c.state === 'needs-auth' ? 'primary' : 'ghost'} onClick={() => setKeyInput('')}>
-              Replace key
+            <button className="ghost" onClick={() => setConfirmRemove(false)}>
+              Keep
             </button>
-          )}
-          {c.kind === 'browser' && (
-            <button className="ghost" disabled={!!busy} onClick={() => void run('open', () => api.connections.openBrowser(c.id))}>
-              Open to log in
-            </button>
-          )}
-          {confirmRemove ? (
-            <>
-              <button className="danger" disabled={!!busy} onClick={() => void run('remove', () => api.connections.remove(c.id))}>
-                Remove {c.name}
-              </button>
-              <button className="ghost" onClick={() => setConfirmRemove(false)}>
-                Keep
-              </button>
-            </>
-          ) : (
-            <button className="ghost danger-hover" onClick={() => setConfirmRemove(true)}>
-              Remove
-            </button>
-          )}
-        </div>
+          </>
+        ) : (
+          <button className="text-btn danger-hover" onClick={() => setConfirmRemove(true)}>
+            Remove
+          </button>
+        )}
       </div>
     </div>
   )

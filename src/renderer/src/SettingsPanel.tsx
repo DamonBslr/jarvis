@@ -490,37 +490,28 @@ export function SettingsPanel({
                   </div>
                 </label>
 
-                {Object.keys(s.linearRepoMap).length > 0 && (
-                  <div className="row">
-                    <span>Linear team → repo</span>
-                    {Object.entries(s.linearRepoMap).map(([team, path]) => (
-                      <div key={team} className="repo-map">
-                        <code>{team}</code>
-                        <input
-                          value={path}
-                          onChange={(e) => setS({ ...s, linearRepoMap: { ...s.linearRepoMap, [team]: e.target.value } })}
-                        />
-                        <button
-                          className="icon del"
-                          onClick={() => {
-                            const next = { ...s.linearRepoMap }
-                            delete next[team]
-                            setS({ ...s, linearRepoMap: next })
-                          }}
-                        >
-                          <IconX size={13} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="provider-detail">
-                {providers.map((p) => (
-                  <div key={p.id}>
-                    <strong>{p.id}</strong> <span className="ver">{p.available ? (p.version ?? 'online') : 'offline'}</span>
-                    {p.detail && <small> · {p.detail}</small>}
+                {Object.entries(s.linearRepoMap).map(([team, path]) => (
+                  <div key={team} className="row">
+                    <span>
+                      <code className="team-key">{team}</code> repository
+                    </span>
+                    <div className="repo-map">
+                      <input
+                        value={path}
+                        onChange={(e) => setS({ ...s, linearRepoMap: { ...s.linearRepoMap, [team]: e.target.value } })}
+                      />
+                      <button
+                        className="icon del"
+                        title={`Forget the ${team} repository`}
+                        onClick={() => {
+                          const next = { ...s.linearRepoMap }
+                          delete next[team]
+                          setS({ ...s, linearRepoMap: next })
+                        }}
+                      >
+                        <IconX size={13} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -602,6 +593,15 @@ export function SettingsPanel({
         </div>
 
         <div className="panel-actions">
+          {tab === 'general' && (
+            <div className="provider-detail">
+              {providers.map((p) => (
+                <span key={p.id} title={p.detail}>
+                  {p.id} <span className="ver">{p.available ? (p.version ?? 'online') : 'offline'}</span>
+                </span>
+              ))}
+            </div>
+          )}
           {tab === 'connections' ? (
             // Connection changes apply immediately; Done still saves edits made on other tabs.
             <button className="ghost" onClick={() => void save()}>

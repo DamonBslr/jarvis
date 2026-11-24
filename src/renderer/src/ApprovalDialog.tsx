@@ -112,6 +112,7 @@ function ToolApproval({
   const input = request.input as any
   const description = typeof input?.description === 'string' ? input.description : null
   const short = request.toolName.replace(/^mcp__jarvis__/, '').replace(/^mcp__/, '')
+  const [always, setAlways] = useState(false)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -121,12 +122,12 @@ function ToolApproval({
         onDecide({ behavior: 'deny' })
       } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
-        onDecide({ behavior: 'allow' })
+        onDecide({ behavior: 'allow' }, always)
       }
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [onDecide])
+  }, [onDecide, always])
 
   return (
     <div className="overlay approval-overlay">
@@ -144,13 +145,14 @@ function ToolApproval({
           <pre>{JSON.stringify(request.input, null, 2)}</pre>
         </details>
         <div className="panel-actions">
+          <label className="approval-always">
+            <input type="checkbox" checked={always} onChange={(e) => setAlways(e.target.checked)} />
+            Always allow {short} in this chat
+          </label>
           <button className="ghost" onClick={() => onDecide({ behavior: 'deny' })}>
             Deny <kbd>Esc</kbd>
           </button>
-          <button className="ghost" onClick={() => onDecide({ behavior: 'allow' }, true)}>
-            Always allow {short} in this chat
-          </button>
-          <button className="primary" autoFocus onClick={() => onDecide({ behavior: 'allow' })}>
+          <button className="primary" autoFocus onClick={() => onDecide({ behavior: 'allow' }, always)}>
             Allow <kbd className="on-primary">⌘↵</kbd>
           </button>
         </div>

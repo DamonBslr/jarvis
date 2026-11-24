@@ -986,11 +986,8 @@ export function App() {
             <div className="hint">
               {(
                 [
-                  [settings.quickHotkey, 'Quick ask'],
-                  [settings.voiceHotkey, 'Talk'],
-                  [settings.liveHotkey, 'Live'],
-                  ['⌘D', 'Dictate'],
-                  ['Esc', 'Stop a run']
+                  [settings.quickHotkey, 'Quick ask from anywhere'],
+                  [settings.voiceHotkey, 'Talk']
                 ] as const
               ).map(([k, label]) => (
                 <span key={label} className="hint-item">

@@ -8,7 +8,7 @@ import { IconX } from './icons'
 
 const api = window.jarvis
 type View = { kind: 'project'; id: string } | { kind: 'elsewhere' } | { kind: 'sources' } | { kind: 'focus' }
-type Tab = 'brief' | 'loops' | 'activity'
+type Tab = 'brief' | 'loops' | 'activity' | 'settings'
 
 const LOOP_LABEL: Record<OpenLoop['kind'], string> = {
   review: 'waiting on you',
@@ -189,7 +189,7 @@ function ProjectView({ digest, onAsk }: { digest: ProjectDigest; onAsk(prompt: s
       </div>
 
       <div className="tabs proj-tabs">
-        {(['brief', 'loops', 'activity'] as Tab[]).map((t) => (
+        {(['brief', 'loops', 'activity', 'settings'] as Tab[]).map((t) => (
           <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
             {t === 'loops' ? `Open loops${digest.loops.length ? ` · ${digest.loops.length}` : ''}` : t}
           </button>
@@ -214,8 +214,11 @@ function ProjectView({ digest, onAsk }: { digest: ProjectDigest; onAsk(prompt: s
                 {briefing ? 'Writing…' : 'Rewrite brief'}
               </button>
             </div>
+          </>
+        )}
+        {tab === 'settings' && (
+          <>
             <div className="proj-fields">
-              <h3 className="settings-section">Project settings</h3>
               <label className="field">
                 <span>
                   Notes for Jarvis <span className="opt">goals, deadlines, who's involved</span>
