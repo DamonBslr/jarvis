@@ -67,8 +67,8 @@ export function Onboarding({ settings, onDone }: { settings: Settings; onDone(ne
           <section className="onboard-card intro">
             <div className="empty-orb" />
             <h1>Let's make me yours.</h1>
+            <p>I live on this Mac and learn from your repos, pull requests, tickets and agent threads: only the ones you choose.</p>
             <p>
-              I live on this Mac and learn from your repos, pull requests, tickets and agent threads, only the ones you choose.
               Everything stays in a local database here, except project summaries I send to your own Claude subscription to write
               briefs.
             </p>

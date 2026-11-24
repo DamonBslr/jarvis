@@ -98,7 +98,7 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="overlay" onClick={onClose}>
+    <div className="overlay page">
       <div className="panel memory-panel" onClick={(e) => e.stopPropagation()}>
         <div className="panel-head">
           <h2>Memory</h2>

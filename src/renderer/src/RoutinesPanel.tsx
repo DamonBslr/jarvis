@@ -246,7 +246,7 @@ export function RoutinesPanel({
   }
 
   return (
-    <div className="overlay" onClick={onClose}>
+    <div className="overlay page">
       <div className="panel routines" onClick={(e) => e.stopPropagation()}>
         <div className="panel-head">
           <h2>Routines</h2>

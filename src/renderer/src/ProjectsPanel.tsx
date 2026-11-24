@@ -45,7 +45,7 @@ export function ProjectsPanel({
   const current = view?.kind === 'project' ? ov?.projects.find((d) => d.project.id === view.id) : undefined
 
   return (
-    <div className="overlay" onClick={onClose}>
+    <div className="overlay page">
       <div className="panel projects-panel" onClick={(e) => e.stopPropagation()}>
         <div className="panel-head">
           <h2>Projects</h2>

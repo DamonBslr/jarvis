@@ -676,7 +676,7 @@ input[type='range'] {
   margin-bottom: auto;
   padding-top: 20px;
 }
-.main.is-empty .composer-box,
+.main.is-empty .composer-stack,
 .main.is-empty .composer .hint {
   max-width: 640px;
 }
@@ -1131,30 +1131,31 @@ input[type='range'] {
   flex: none;
   padding: 8px 32px 22px;
 }
-.composer-box {
+.composer-stack {
   max-width: var(--column);
   margin: 0 auto;
-  display: flex;
-  align-items: flex-end;
-  gap: 4px;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 8px 8px 8px 16px;
+  border-radius: 14px;
   box-shadow: var(--shadow-soft);
+  overflow: hidden;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.composer-box:focus-within {
+.composer-stack:focus-within {
   border-color: rgba(108, 200, 218, 0.45);
   box-shadow: var(--shadow-soft), 0 0 0 3px rgba(108, 200, 218, 0.08);
 }
-.composer:focus-within .pr-banner {
-  border-color: rgba(108, 200, 218, 0.45);
+.composer-stack:has(.live-bar) {
+  border: 0;
+  background: none;
+  box-shadow: none;
+  overflow: visible;
 }
-.pr-banner + .composer-box,
-.pr-banner + .composer-box:focus-within {
-  border-top-color: var(--line-soft);
-  box-shadow: var(--shadow-soft);
+.composer-box {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 8px 8px 8px 16px;
 }
 .composer textarea {
   flex: 1;
@@ -1340,9 +1341,9 @@ input[type='range'] {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(6, 7, 9, 0.34);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  background: rgba(6, 7, 9, 0.38);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   display: grid;
   place-items: center;
   z-index: 10;
@@ -2130,11 +2131,15 @@ button.chip:hover {
 }
 .wb-commit {
   display: flex;
-  gap: 10px;
-  padding: 5px 8px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
   font-size: 12.5px;
-  align-items: baseline;
   color: var(--text-2);
+}
+.wb-commit-meta {
+  font-size: 11.5px;
+  color: var(--faint);
 }
 .wb-hash {
   font-family: var(--mono);
@@ -2329,9 +2334,9 @@ button.chip:hover {
 /* Approval */
 .approval-overlay {
   z-index: 20;
-  background: rgba(6, 7, 9, 0.46);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(6, 7, 9, 0.38);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
 }
 .approval-always {
   margin-right: auto;
@@ -2417,10 +2422,8 @@ button kbd {
   align-items: center;
   gap: 8px;
   padding: 7px 8px 7px 16px;
-  border: 1px solid var(--line);
-  border-bottom: 0;
-  border-radius: 16px 16px 0 0;
-  background: color-mix(in srgb, var(--accent) 6%, var(--panel));
+  border-bottom: 1px solid var(--line-soft);
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel));
   font-size: 13px;
   color: var(--text-2);
 }
@@ -2432,10 +2435,6 @@ button kbd {
   min-height: 28px;
   height: 28px;
   font-size: 12.5px;
-}
-.pr-banner + .composer-box {
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
 }
 .pr-banner span {
   flex: 1;
@@ -2753,7 +2752,8 @@ html.is-quick .approval-overlay {
 }
 .setup-main small {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
   overflow-wrap: anywhere;
 }
 .setup-main select {
@@ -3054,9 +3054,16 @@ html.is-quick .approval-overlay {
 .conn-row:focus-within .conn-actions > button {
   opacity: 1;
 }
+.conn-actions {
+  width: 316px;
+  justify-content: flex-end;
+}
 .conn-actions select {
-  field-sizing: content;
-  max-width: 180px;
+  width: 160px;
+  margin-right: auto;
+}
+.conn-actions > button:not(.text-btn) {
+  min-width: 88px;
 }
 .text-btn {
   border: 0;
@@ -3283,8 +3290,11 @@ button.danger {
 .onboard-card.intro > p {
   font-size: 14px;
   line-height: 1.6;
-  max-width: none;
-  margin-bottom: 30px;
+  max-width: 500px;
+  margin-bottom: 12px;
+}
+.onboard-card.intro > p + label {
+  margin-top: 28px;
 }
 .onboard-card h1 {
   font-size: 26px;
@@ -4011,4 +4021,88 @@ button.tl-title {
 .digest-chip .mem-meta,
 .digest-loop .mem-meta {
   display: inline;
+}
+
+/* ---------- Pages: Projects, Memory and Routines open over the main column; the sidebar stays put ---------- */
+.overlay.page {
+  left: 260px;
+  z-index: 8;
+  display: block;
+  background: var(--bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  overflow-y: auto;
+  animation: page-in 0.18s var(--ease);
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.overlay.page > .panel {
+  width: 100%;
+  max-width: 800px;
+  height: auto;
+  max-height: none;
+  margin: 0 auto;
+  padding: 0 40px 48px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  animation: none;
+}
+.overlay.page > .projects-panel {
+  max-width: 1080px;
+  height: 100%;
+  padding-bottom: 24px;
+}
+.overlay.page .panel-head {
+  min-height: 52px;
+  padding-top: 28px;
+  margin-bottom: 14px;
+  -webkit-app-region: drag;
+}
+.overlay.page .panel-head button,
+.overlay.page .panel-head select {
+  -webkit-app-region: no-drag;
+}
+.overlay.page .panel-head h2 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.overlay.page .mem-list {
+  flex: none;
+  overflow: visible;
+}
+.nav-item.active {
+  background: var(--active);
+  color: var(--text);
+}
+.nav-item.active .ico {
+  color: var(--accent);
+}
+
+/* Toolbar grouping: mode as quiet context, engine as the selection, then permissions and folder */
+.controls .ctl-mode {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.controls .ctl-engine {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.ctl-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 6px;
+  background: var(--line);
+}
+.conn-row .setup-main > small:first-of-type {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

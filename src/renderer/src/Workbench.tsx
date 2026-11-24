@@ -145,10 +145,11 @@ function GitTab({
       <div className="wb-section">Recent commits</div>
       <div className="wb-commits">
         {(status.commits ?? []).map((c) => (
-          <div key={c.hash} className="wb-commit" title={`${c.author} · ${c.when}`}>
-            <span className="wb-hash">{c.hash}</span>
+          <div key={c.hash} className="wb-commit" title={`${c.subject}\n${c.author} · ${c.when}`}>
             <span className="wb-subject">{c.subject}</span>
-            <span className="wb-when">{shortAge(c.when)}</span>
+            <span className="wb-commit-meta">
+              <span className="wb-hash">{c.hash}</span> · {c.author} · {shortAge(c.when, true)}
+            </span>
           </div>
         ))}
       </div>
