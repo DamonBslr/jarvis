@@ -8,7 +8,7 @@ let quick: BrowserWindow | null = null
 let quickPinned = false
 
 const QUICK_WIDTH = 720
-const QUICK_MIN = 76
+const QUICK_MIN = 64
 const QUICK_MAX = 560
 
 const prefs = (extra: WebPreferences = {}): WebPreferences => ({

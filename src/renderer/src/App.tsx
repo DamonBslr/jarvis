@@ -23,6 +23,7 @@ import { HomeDigest } from './HomeDigest'
 import { applyEvent, historyFor, uid } from '@shared/chat'
 import { Mic, recordUtterance, type Utterance } from './voice'
 import { LIVE_SYSTEM_PROMPT, LiveLoop, type LivePhase } from './live'
+import { IconArrowUp, IconBrain, IconClock, IconCompose, IconFolder, IconLayers, IconPanelRight, IconSettings, IconStop, IconX, IconTicket, IconChevronDown, IconStars } from './icons'
 
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
 
@@ -60,6 +61,23 @@ const AUTONOMY_LABEL: Record<RunRequest['autonomy'], string> = {
   full: 'Full access'
 }
 
+/** Sidebar sections by last activity. */
+function groupByDay(convs: Conversation[]): { label: string; items: Conversation[] }[] {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  const today = start.getTime()
+  const day = 86_400_000
+  const buckets: [string, number][] = [
+    ['Today', today],
+    ['Yesterday', today - day],
+    ['Previous 7 days', today - 7 * day],
+    ['Older', -Infinity]
+  ]
+  const groups = buckets.map(([label]) => ({ label, items: [] as Conversation[] }))
+  for (const c of convs) groups[buckets.findIndex(([, from]) => c.updatedAt >= from)].items.push(c)
+  return groups.filter((g) => g.items.length)
+}
+
 const basename = (p: string) => p.split('/').filter(Boolean).pop() ?? p
 export const prettyKey = (accel: string) =>
   accel
@@ -68,6 +86,12 @@ export const prettyKey = (accel: string) =>
     .replace(/Alt|Option/g, '⌥')
     .replace(/Shift/g, '⇧')
     .replace(/\+/g, '')
+
+function greeting(name?: string) {
+  const h = new Date().getHours()
+  const part = h < 5 ? 'Working late' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
+  return name ? `${part}, ${name}.` : `${part}.`
+}
 
 const PHASE_LABEL: Record<LivePhase, string> = {
   listening: 'Listening…',
@@ -112,6 +136,12 @@ export function App() {
   const [showMemory, setShowMemory] = useState(false)
   const [showRoutines, setShowRoutines] = useState(false)
   const [showProjects, setShowProjects] = useState(false)
+  // Projects, Memory and Routines are pages over the main column; one at a time, the sidebar stays usable.
+  const openPage = (page: 'projects' | 'memory' | 'routines' | null) => {
+    setShowProjects(page === 'projects')
+    setShowMemory(page === 'memory')
+    setShowRoutines(page === 'routines')
+  }
   const [onboarding, setOnboarding] = useState(false)
   const [showWorkbench, setShowWorkbench] = useState(() => {
     try {
@@ -190,9 +220,9 @@ export function App() {
       }),
       api.onOpenPanel((panel) =>
         panel === 'routines'
-          ? setShowRoutines(true)
+          ? openPage('routines')
           : panel === 'projects'
-            ? setShowProjects(true)
+            ? openPage('projects')
             : panel === 'onboarding'
               ? setOnboarding(true)
               : setShowSettings(true)
@@ -304,10 +334,19 @@ export function App() {
   }, [updateConv])
 
   // Stick to bottom while streaming
+  const [scrolledUp, setScrolledUp] = useState(false)
+  const checkScroll = useCallback(() => {
+    const el = scrollRef.current
+    setScrolledUp(!!el && el.scrollHeight - el.scrollTop - el.clientHeight > 24)
+  }, [])
   useEffect(() => {
     const el = scrollRef.current
     if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 200) el.scrollTop = el.scrollHeight
-  }, [active?.messages])
+    checkScroll()
+    // Content can grow after this render (code blocks, fonts); re-check once laid out.
+    const raf = requestAnimationFrame(checkScroll)
+    return () => cancelAnimationFrame(raf)
+  }, [active?.messages, checkScroll])
 
   const newConversation = useCallback(() => {
     if (!settings) return
@@ -325,6 +364,7 @@ export function App() {
     }
     setConvs((prev) => [c, ...prev])
     setActiveId(c.id)
+    openPage(null)
     setDraft('')
     setTimeout(() => inputRef.current?.focus(), 0)
     return c
@@ -604,18 +644,40 @@ export function App() {
     if (activeRun) void api.cancel(activeRun.runId)
   }, [activeRun])
 
+  // The workbench stays out of the way on an empty chat unless it is opened there explicitly.
+  const isEmpty = !active || active.messages.length === 0
+  const [wbOnEmpty, setWbOnEmpty] = useState(false)
+  const wbVisible = showWorkbench && !!active && (!isEmpty || wbOnEmpty)
+  const toggleWorkbench = useCallback(() => {
+    if (wbVisible) {
+      if (isEmpty) setWbOnEmpty(false)
+      else setShowWorkbench(false)
+    } else {
+      setShowWorkbench(true)
+      if (isEmpty) setWbOnEmpty(true)
+    }
+  }, [wbVisible, isEmpty])
+
   // Global keys
+  const panelOpen = showSettings || showMemory || showRoutines || showProjects
+  const approvalOpen = approvals.length > 0
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey && e.key.toLowerCase() === 'b') {
         e.preventDefault()
-        setShowWorkbench((v) => !v)
+        toggleWorkbench()
       } else if (e.metaKey && e.key.toLowerCase() === 'n') {
         e.preventDefault()
         newConversation()
       } else if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'd') {
         e.preventDefault()
         void dictate()
+      } else if (e.key === 'Escape' && panelOpen && !approvalOpen) {
+        // Esc closes the open panel before it stops anything running.
+        setShowSettings(false)
+        setShowMemory(false)
+        setShowRoutines(false)
+        setShowProjects(false)
       } else if (e.key === 'Escape' && liveRef.current) {
         // First Esc stops the answer, the next ends live mode.
         const phase = liveRef.current.current
@@ -629,7 +691,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [newConversation, cancel, activeRun, dictate, stopLive])
+  }, [newConversation, cancel, activeRun, dictate, stopLive, panelOpen, approvalOpen, toggleWorkbench])
 
   const removeConversation = async (id: string) => {
     const r = runs[id]
@@ -676,7 +738,7 @@ export function App() {
     )
 
   return (
-    <div className={`app ${showWorkbench && active ? 'with-wb' : ''}`}>
+    <div className={`app ${wbVisible ? 'with-wb' : ''} ${showProjects || showMemory || showRoutines ? 'page-open' : ''}`}>
       <aside className="sidebar">
         <div className="sidebar-top drag">
           <div className="brand">
@@ -685,74 +747,90 @@ export function App() {
           </div>
         </div>
         <button className="new-chat" onClick={newConversation}>
-          New chat <kbd>⌘N</kbd>
+          <IconCompose size={15} />
+          <span>New chat</span>
+          <kbd>⌘N</kbd>
         </button>
         <nav className="conv-list">
-          {convs.map((c) => (
-            <div
-              key={c.id}
-              className={`conv-item ${c.id === activeId ? 'active' : ''}`}
-              onClick={() => setActiveId(c.id)}
-            >
-              <span className={`dot ${runs[c.id] ? 'running' : ''}`} data-provider={c.provider} />
-              <span className="conv-title">{c.title}</span>
-              {c.routineId && <span className="conv-tag" title="Created by a routine">routine</span>}
-              {c.quick && !c.routineId && <span className="conv-tag" title="Started from the quick bar">quick</span>}
-              <button
-                className="conv-del"
-                title="Delete"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  void removeConversation(c.id)
-                }}
-              >
-                ×
-              </button>
-            </div>
+          {groupByDay(convs.filter((c) => c.messages.length > 0 || c.id !== activeId)).map((g) => (
+            <section key={g.label} className="conv-group">
+              <div className="conv-group-label">{g.label}</div>
+              {g.items.map((c) => (
+                <div
+                  key={c.id}
+                  className={`conv-item ${c.id === activeId ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveId(c.id)
+                    openPage(null)
+                  }}
+                >
+                  <span className={`dot ${runs[c.id] ? 'running' : ''}`} data-provider={c.provider} />
+                  <span className="conv-title">{c.title}</span>
+                  {c.routineId && <span className="conv-tag" title="Created by a routine">routine</span>}
+                  {c.quick && !c.routineId && <span className="conv-tag" title="Started from the quick bar">quick</span>}
+                  <button
+                    className="conv-del"
+                    title="Delete"
+                    aria-label="Delete chat"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void removeConversation(c.id)
+                    }}
+                  >
+                    <IconX size={13} />
+                  </button>
+                </div>
+              ))}
+            </section>
           ))}
         </nav>
         <div className="sidebar-foot">
-          <div className="provider-health" onClick={refreshProviders} title="Click to re-check">
+          <button className={`nav-item ${showProjects ? 'active' : ''}`} onClick={() => openPage('projects')}>
+            <IconLayers size={15} /> Projects
+          </button>
+          <button className={`nav-item ${showMemory ? 'active' : ''}`} onClick={() => openPage('memory')}>
+            <IconBrain size={15} /> Memory
+          </button>
+          <button className={`nav-item ${showRoutines ? 'active' : ''}`} onClick={() => openPage('routines')}>
+            <IconClock size={15} /> Routines
+          </button>
+          <button className="nav-item" onClick={() => setShowSettings(true)}>
+            <IconSettings size={15} /> Settings
+          </button>
+          <div className="provider-health" onClick={refreshProviders} title="Engines · click to re-check">
             {providers.map((p) => (
-              <div key={p.id} className="health-row" title={p.detail ?? p.version ?? ''}>
+              <span key={p.id} className="health-row" title={p.detail ?? p.version ?? ''}>
                 <span className={`health-dot ${p.available ? 'ok' : 'off'}`} />
-                {PROVIDER_LABEL[p.id]}
+                {PROVIDER_LABEL[p.id].replace(' Code', '')}
                 {p.detail && p.available && <span className="health-warn">!</span>}
-              </div>
+              </span>
             ))}
           </div>
-          <button className="ghost" onClick={() => setShowProjects(true)}>
-            Projects
-          </button>
-          <button className="ghost" onClick={() => setShowMemory(true)}>
-            Memory
-          </button>
-          <button className="ghost" onClick={() => setShowRoutines(true)}>
-            Routines
-          </button>
-          <button className="ghost" onClick={() => setShowSettings(true)}>
-            Settings
-          </button>
         </div>
       </aside>
 
-      <main className="main">
+      <main className={`main ${isEmpty ? 'is-empty' : ''}`}>
         <header className="topbar drag">
           {active ? (
             <div className="controls no-drag">
-              <select value={active.modeId} onChange={(e) => setMode(e.target.value)} title="Mode">
+              <span className="ctl-icon">
+                <IconStars size={14} />
+              </span>
+              <select className="ctl-mode" value={active.modeId} onChange={(e) => setMode(e.target.value)} title="Mode">
                 {modes.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.name}
+                    {m.name.split(' · ')[0]}
                   </option>
                 ))}
               </select>
+              <span className="who-mark sm" data-provider={active.provider} />
               <select
                 value={active.provider}
                 onChange={(e) =>
                   updateConv(active.id, (c) => ({ ...c, provider: e.target.value as ProviderId, model: undefined }))
                 }
                 title="Engine"
+                className="ctl-engine"
               >
                 {(Object.keys(PROVIDER_LABEL) as ProviderId[]).map((id) => (
                   <option key={id} value={id} disabled={!providerStatus(id)?.available}>
@@ -773,6 +851,11 @@ export function App() {
                 </select>
               )}
               {active.provider !== 'ollama' && (
+                <span className="ctl-icon">
+                  <IconCompose size={14} />
+                </span>
+              )}
+              {active.provider !== 'ollama' && (
                 <select
                   value={active.autonomy}
                   onChange={(e) =>
@@ -789,7 +872,8 @@ export function App() {
                 </select>
               )}
               <button className="folder" onClick={pickFolder} title={active.cwd}>
-                <span className="folder-icon">▸</span> {basename(active.cwd)}
+                <IconFolder size={14} /> {basename(active.cwd)}
+                <IconChevronDown size={13} />
               </button>
             </div>
           ) : (
@@ -798,34 +882,30 @@ export function App() {
           <div className="topbar-right no-drag">
             {active?.linear && (
               <button className="ticket-chip" onClick={() => api.openExternal(active.linear!.url)} title={active.linear.title}>
+                <IconTicket size={13} />
                 {active.linear.identifier}
                 {active.linear.prLinked && ' · PR linked'}
               </button>
             )}
             <button
-              className={`ghost wb-toggle ${showWorkbench ? 'on' : ''}`}
-              onClick={() => setShowWorkbench((v) => !v)}
+              className={`icon-btn wb-toggle ${wbVisible ? 'on' : ''}`}
+              onClick={toggleWorkbench}
               title="Git & Linear workbench (⌘B)"
+              aria-label="Toggle workbench"
             >
-              Workbench
+              <IconPanelRight size={17} />
             </button>
           </div>
         </header>
 
-        <div className="messages" ref={scrollRef}>
-          {!active || active.messages.length === 0 ? (
+        <div className={`messages ${scrolledUp ? 'scrolled-up' : ''}`} ref={scrollRef} onScroll={checkScroll}>
+          {isEmpty ? (
             <div className="empty">
               <div className="empty-orb" />
-              <h1>What should we do?</h1>
-              <p>
+              <h1>{greeting(settings.userName)}</h1>
+              <p className="empty-sub">
                 {currentMode?.description ??
                   'Runs on your machine through Claude Code, Codex and local Ollama models — using your own subscriptions.'}
-              </p>
-              <HomeDigest onAsk={(p, cwd) => void askAbout(p, cwd)} onOpen={() => setShowProjects(true)} />
-              <p className="hint">
-                <kbd>{prettyKey(settings.quickHotkey)}</kbd> quick ask · <kbd>{prettyKey(settings.voiceHotkey)}</kbd> talk ·{' '}
-                <kbd>{prettyKey(settings.liveHotkey)}</kbd> live conversation · <kbd>⌘D</kbd> dictate ·{' '}
-                <kbd>{prettyKey(settings.hotkey)}</kbd> this window · <kbd>Esc</kbd> stops a run
               </p>
             </div>
           ) : (
@@ -835,111 +915,129 @@ export function App() {
           )}
         </div>
 
-        {prCandidate && active?.linear && (
-          <div className="pr-banner">
-            <span>
-              PR detected · link to <strong>{active.linear.identifier}</strong>
-              {settings.linearAutoMove ? ' and move to In Review' : ''}?
-            </span>
-            <button className="primary" disabled={linking} onClick={() => void linkPr()}>
-              {linking ? 'Linking…' : 'Link PR'}
-            </button>
-            <button className="ghost" onClick={() => setDismissedPr((s) => new Set(s).add(active.id))}>
-              Dismiss
-            </button>
-          </div>
-        )}
-
         <footer className="composer">
           {voiceNote && (
             <div className="voice-note">
               <span>{voiceNote}</span>
-              <button className="link" onClick={() => setVoiceNote(null)} title="Dismiss">
-                ×
+              <button className="icon" onClick={() => setVoiceNote(null)} title="Dismiss" aria-label="Dismiss">
+                <IconX size={13} />
               </button>
             </div>
           )}
-          {live ? (
-            <div className={`live-bar ${live.phase}`}>
-              <span className={`live-orb ${live.phase}`} style={{ ['--level' as string]: level.toFixed(2) }} />
-              <div className="live-text">
-                <div className="live-status">
-                  {PHASE_LABEL[live.phase]}
-                  {live.convId !== activeId && (
-                    <button className="link" onClick={() => setActiveId(live.convId)}>
-                      back to live chat
-                    </button>
-                  )}
-                </div>
-                <div className="live-heard">
-                  {live.heard ? `“${live.heard}”` : 'Just talk. Say “stop live mode” or press Esc to end.'}
-                </div>
+          <div className="composer-stack">
+            {prCandidate && active?.linear && (
+              <div className="pr-banner">
+                <span>
+                  PR detected · link to <strong>{active.linear.identifier}</strong>
+                  {settings.linearAutoMove ? ' and move to In Review' : ''}?
+                </span>
+                <button className="primary" disabled={linking} onClick={() => void linkPr()}>
+                  {linking ? 'Linking…' : 'Link PR'}
+                </button>
+                <button className="text-btn" onClick={() => setDismissedPr((s) => new Set(s).add(active.id))}>
+                  Dismiss
+                </button>
               </div>
-              {(live.phase === 'thinking' || live.phase === 'speaking') && (
-                <button className="ghost" onClick={() => liveRef.current?.interrupt()} title="Stop the answer and listen (Esc)">
-                  Interrupt
+            )}
+            {live ? (
+              <div className={`live-bar ${live.phase}`}>
+                <span className={`live-orb ${live.phase}`} style={{ ['--level' as string]: level.toFixed(2) }} />
+                <div className="live-text">
+                  <div className="live-status">
+                    {PHASE_LABEL[live.phase]}
+                    {live.convId !== activeId && (
+                      <button className="link" onClick={() => setActiveId(live.convId)}>
+                        back to live chat
+                      </button>
+                    )}
+                  </div>
+                  <div className="live-heard">
+                    {live.heard ? `“${live.heard}”` : 'Just talk. Say “stop live mode” or press Esc to end.'}
+                  </div>
+                </div>
+                {(live.phase === 'thinking' || live.phase === 'speaking') && (
+                  <button className="ghost" onClick={() => liveRef.current?.interrupt()} title="Stop the answer and listen (Esc)">
+                    Interrupt
+                  </button>
+                )}
+                <button className="live-end" onClick={() => stopLive()} title="End live mode">
+                  End
                 </button>
-              )}
-              <button className="live-end" onClick={() => stopLive()} title="End live mode">
-                End
-              </button>
-            </div>
-          ) : (
-            <div className="composer-box">
-              <textarea
-                ref={inputRef}
-                value={draft}
-                autoFocus
-                rows={1}
-                placeholder={
-                  dictation === 'listening'
-                    ? 'Listening… pause or click the mic when done'
-                    : dictation === 'transcribing'
-                      ? 'Transcribing…'
-                      : active
-                        ? `Message ${PROVIDER_LABEL[active.provider]} in ${basename(active.cwd)}…`
-                        : 'Ask Jarvis…'
-                }
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                    e.preventDefault()
-                    void send()
+              </div>
+            ) : (
+              <div className="composer-box">
+                <textarea
+                  ref={inputRef}
+                  value={draft}
+                  autoFocus
+                  rows={1}
+                  placeholder={
+                    dictation === 'listening'
+                      ? 'Listening… pause or click the mic when done'
+                      : dictation === 'transcribing'
+                        ? 'Transcribing…'
+                        : active
+                          ? `Message ${PROVIDER_LABEL[active.provider]} in ${basename(active.cwd)}…`
+                          : 'Ask Jarvis…'
                   }
-                }}
-              />
-              <button
-                className={`voice-btn ${dictation !== 'idle' ? 'on' : ''} ${dictation}`}
-                style={{ ['--level' as string]: level.toFixed(2) }}
-                onClick={() => void dictate()}
-                disabled={dictation === 'transcribing'}
-                title={dictation === 'listening' ? 'Done talking' : 'Dictate (⌘D)'}
-              >
-                <MicIcon />
-              </button>
-              <button
-                className="voice-btn"
-                onClick={() => void startLive()}
-                disabled={dictation !== 'idle'}
-                title={`Live conversation (${prettyKey(settings.liveHotkey)})`}
-              >
-                <LiveIcon />
-              </button>
-              {activeRun ? (
-                <button className="stop" onClick={cancel} title="Stop (Esc)">
-                  ■
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      e.preventDefault()
+                      void send()
+                    }
+                  }}
+                />
+                <button
+                  className={`voice-btn ${dictation !== 'idle' ? 'on' : ''} ${dictation}`}
+                  style={{ ['--level' as string]: level.toFixed(2) }}
+                  onClick={() => void dictate()}
+                  disabled={dictation === 'transcribing'}
+                  title={dictation === 'listening' ? 'Done talking' : 'Dictate (⌘D)'}
+                >
+                  <MicIcon />
                 </button>
-              ) : (
-                <button className="send" onClick={() => void send()} disabled={!draft.trim()} title="Send (Enter)">
-                  ↑
+                <button
+                  className="voice-btn"
+                  onClick={() => void startLive()}
+                  disabled={dictation !== 'idle'}
+                  title={`Live conversation (${prettyKey(settings.liveHotkey)})`}
+                >
+                  <LiveIcon />
                 </button>
-              )}
+                {activeRun ? (
+                  <button className="stop" onClick={cancel} title="Stop (Esc)" aria-label="Stop">
+                    <IconStop size={16} />
+                  </button>
+                ) : (
+                  <button className={`send ${draft.trim() ? 'ready' : ''}`} onClick={() => void send()} disabled={!draft.trim()} title="Send (Enter)" aria-label="Send">
+                    <IconArrowUp size={16} />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          {isEmpty && !live && (
+            <div className="hint">
+              {(
+                [
+                  [settings.quickHotkey, 'Quick ask from anywhere'],
+                  [settings.voiceHotkey, 'Talk']
+                ] as const
+              ).map(([k, label]) => (
+                <span key={label} className="hint-item">
+                  <kbd>{prettyKey(k)}</kbd> {label}
+                </span>
+              ))}
             </div>
+          )}
+          {isEmpty && !live && (
+            <HomeDigest onAsk={(p, cwd) => void askAbout(p, cwd)} onOpen={() => openPage('projects')} />
           )}
         </footer>
       </main>
 
-      {showWorkbench && active && (
+      {wbVisible && active && (
         <Workbench
           cwd={active.cwd}
           refreshKey={gitTick}
@@ -947,6 +1045,7 @@ export function App() {
           onAsk={(prompt) => void send(prompt, active)}
           onWork={(issue) => void startTicket(issue)}
           repoFor={(team) => settings.linearRepoMap[team]}
+          activeIssue={active.linear?.identifier}
         />
       )}
 

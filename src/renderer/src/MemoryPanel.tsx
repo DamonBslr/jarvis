@@ -1,33 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { KnowledgeSource, Memory, MemoryStatus, MemoryType } from '@shared/types'
+import { IconSearch, IconX } from './icons'
+import { timeAgo } from './knowledgeUi'
 
 const api = window.jarvis.memory
 const TYPES: MemoryType[] = ['profile', 'preference', 'workflow', 'project', 'person', 'fact']
 type Tab = 'memories' | 'knowledge' | 'status'
 
-function timeAgo(t?: number) {
-  if (!t) return 'never'
-  const s = (Date.now() - t) / 1000
-  if (s < 60) return 'just now'
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
-  return `${Math.floor(s / 86400)}d ago`
-}
 
 function MemoryRow({ m, onChange }: { m: Memory; onChange: () => void }) {
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(m.content)
   return (
     <div className={`mem-row ${m.pinned ? 'pinned' : ''}`}>
-      <select
-        className="mem-type"
-        value={m.type}
-        onChange={(e) => api.update(m.id, { type: e.target.value as MemoryType }).then(onChange)}
-      >
-        {TYPES.map((t) => (
-          <option key={t}>{t}</option>
-        ))}
-      </select>
       {editing ? (
         <input
           className="mem-edit"
@@ -50,7 +35,21 @@ function MemoryRow({ m, onChange }: { m: Memory; onChange: () => void }) {
         <div className="mem-content" onDoubleClick={() => setEditing(true)} title="Double-click to edit">
           {m.content}
           <span className="mem-meta">
-            {m.source.startsWith('learned') ? 'learned' : m.source} · used {m.uses}× · {timeAgo(m.updatedAt)}
+            <select
+              className="mem-type"
+              value={m.type}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => api.update(m.id, { type: e.target.value as MemoryType }).then(onChange)}
+            >
+              {TYPES.map((t) => (
+                <option key={t}>{t}</option>
+              ))}
+            </select>
+            {' · '}
+            {m.source.startsWith('learned') ? 'learned' : m.source}
+            <span className="mem-usage">
+              used {m.uses}× · {timeAgo(m.updatedAt)}
+            </span>
           </span>
         </div>
       )}
@@ -62,7 +61,7 @@ function MemoryRow({ m, onChange }: { m: Memory; onChange: () => void }) {
         ★
       </button>
       <button className="icon del" title="Forget" onClick={() => api.remove(m.id).then(onChange)}>
-        ×
+        <IconX size={13} />
       </button>
     </div>
   )
@@ -76,6 +75,7 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
   const [status, setStatus] = useState<MemoryStatus | null>(null)
   const [newText, setNewText] = useState('')
   const [newType, setNewType] = useState<MemoryType>('preference')
+  const [adding, setAdding] = useState(false)
 
   const loadMemories = useCallback(() => api.list(query).then(setMemories), [query])
   const loadSources = useCallback(() => api.sources().then(setSources), [])
@@ -93,6 +93,7 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
     if (!newText.trim()) return
     await api.add({ type: newType, content: newText })
     setNewText('')
+    setAdding(false)
     void loadMemories()
   }
 
@@ -102,17 +103,22 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="overlay" onClick={onClose}>
+    <div className="overlay page">
       <div className="panel memory-panel" onClick={(e) => e.stopPropagation()}>
         <div className="panel-head">
           <h2>Memory</h2>
-          <div className="tabs">
-            {(['memories', 'knowledge', 'status'] as Tab[]).map((t) => (
-              <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-                {t}
-              </button>
-            ))}
-          </div>
+          {tab === 'memories' && !adding && (
+            <button className="primary" onClick={() => setAdding(true)}>
+              Add memory
+            </button>
+          )}
+        </div>
+        <div className="tabs panel-tabs">
+          {(['memories', 'knowledge', 'status'] as Tab[]).map((t) => (
+            <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
+              {t}
+            </button>
+          ))}
         </div>
 
         {tab === 'memories' && (
@@ -121,28 +127,32 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
               What Jarvis knows about you. Learned automatically after conversations; pinned items are always in
               context.
             </p>
-            <div className="mem-add">
-              <select value={newType} onChange={(e) => setNewType(e.target.value as MemoryType)}>
-                {TYPES.map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </select>
-              <input
-                placeholder="Teach Jarvis something, e.g. “I prefer pnpm and conventional commits”"
-                value={newText}
-                onChange={(e) => setNewText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && void add()}
-              />
-              <button className="primary" onClick={() => void add()} disabled={!newText.trim()}>
-                Add
-              </button>
-            </div>
-            <input
-              className="mem-search"
-              placeholder="Search memories…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
+            {adding && (
+              <div className="mem-add">
+                <select value={newType} onChange={(e) => setNewType(e.target.value as MemoryType)}>
+                  {TYPES.map((t) => (
+                    <option key={t}>{t}</option>
+                  ))}
+                </select>
+                <input
+                  autoFocus
+                  placeholder="Teach Jarvis something, e.g. “I prefer pnpm and conventional commits”"
+                  value={newText}
+                  onChange={(e) => setNewText(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && void add()}
+                />
+                <button className="primary" onClick={() => void add()} disabled={!newText.trim()}>
+                  Add
+                </button>
+                <button className="ghost" onClick={() => setAdding(false)}>
+                  Cancel
+                </button>
+              </div>
+            )}
+            <label className="search-field">
+              <IconSearch size={14} />
+              <input className="mem-search" placeholder="Search memories…" value={query} onChange={(e) => setQuery(e.target.value)} />
+            </label>
             <div className="mem-list">
               {memories.length === 0 && (
                 <div className="mem-empty">
@@ -180,7 +190,7 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
                     Re-index
                   </button>
                   <button className="icon del" title="Remove" onClick={() => api.removeSource(s.id)}>
-                    ×
+                    <IconX size={13} />
                   </button>
                 </div>
               ))}
@@ -230,11 +240,6 @@ export function MemoryPanel({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        <div className="panel-actions">
-          <button className="ghost" onClick={onClose}>
-            Close
-          </button>
-        </div>
       </div>
     </div>
   )

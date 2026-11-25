@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ProviderId, ProviderStatus, Routine, Settings } from '@shared/types'
 import { uid } from '@shared/chat'
+import { timeAgo } from './knowledgeUi'
 
 const api = window.jarvis
 const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
@@ -65,14 +66,7 @@ function describe(r: Routine) {
   return `${days} at ${r.schedule.time}`
 }
 
-function ago(ts?: number) {
-  if (!ts) return 'never run'
-  const min = Math.round((Date.now() - ts) / 60000)
-  if (min < 1) return 'just now'
-  if (min < 60) return `${min} min ago`
-  if (min < 48 * 60) return `${Math.round(min / 60)} h ago`
-  return new Date(ts).toLocaleDateString()
-}
+const ago = (ts?: number) => (ts ? timeAgo(ts) : 'never run')
 
 function Editor({
   routine,
@@ -251,13 +245,15 @@ export function RoutinesPanel({
   }
 
   return (
-    <div className="overlay" onClick={onClose}>
+    <div className="overlay page">
       <div className="panel routines" onClick={(e) => e.stopPropagation()}>
         <div className="panel-head">
           <h2>Routines</h2>
-          <button className="icon" onClick={onClose}>
-            ×
-          </button>
+          {!editing && !adding && (
+            <button className="primary" onClick={() => setAdding(true)}>
+              New routine
+            </button>
+          )}
         </div>
         <p className="panel-sub">
           Prompts Jarvis runs on a schedule with fresh Linear, GitHub and repo data. Each run becomes a chat you can
@@ -288,7 +284,7 @@ export function RoutinesPanel({
                   <div className="routine-main" onClick={() => setEditing(r)}>
                     <div className="routine-name">{r.name}</div>
                     <div className="routine-meta">
-                      {describe(r)} · {PROVIDER_LABEL[r.provider]}
+                      <span className="routine-when">{describe(r)}</span> · {PROVIDER_LABEL[r.provider]}
                       {r.model ? ` ${r.model}` : ''} ·{' '}
                       {r.running ? (
                         <span className="routine-running">running…</span>
@@ -299,13 +295,22 @@ export function RoutinesPanel({
                       ) : (
                         ago(r.lastRunAt)
                       )}
+                      {r.lastConvId && (
+                        <>
+                          {' · '}
+                          <button
+                            className="link"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onOpen(r.lastConvId!)
+                            }}
+                          >
+                            Last result
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
-                  {r.lastConvId && (
-                    <button className="ghost small" onClick={() => onOpen(r.lastConvId!)}>
-                      Last result
-                    </button>
-                  )}
                   <button
                     className="ghost small"
                     disabled={r.running}
@@ -339,13 +344,7 @@ export function RoutinesPanel({
                   cancel
                 </button>
               </div>
-            ) : (
-              <div className="panel-actions">
-                <button className="primary" onClick={() => setAdding(true)}>
-                  New routine
-                </button>
-              </div>
-            )}
+            ) : null}
           </>
         )}
       </div>

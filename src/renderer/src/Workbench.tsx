@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { GitFile, GitStatus, LinearIssue, PullRequest } from '@shared/types'
+import { IconBranch, IconPr, IconPush, IconRefresh, IconSync, IconX } from './icons'
+import { shortAge } from './knowledgeUi'
 
 const api = window.jarvis
 
@@ -68,39 +70,54 @@ function GitTab({
       <div className="wb-head">
         <div className="wb-branch">
           <span className="wb-repo">{repoName}</span>
-          <span className="wb-branch-name">{status.branch}</span>
+          <span className="wb-branch-name">
+            <IconBranch size={12} />
+            {status.branch}
+          </span>
           {(status.ahead ?? 0) > 0 && <span className="wb-ab">↑{status.ahead}</span>}
           {(status.behind ?? 0) > 0 && <span className="wb-ab">↓{status.behind}</span>}
           {!status.upstream && status.branch !== '(detached)' && <span className="wb-ab dim">no upstream</span>}
         </div>
-        <button className="icon" title="Refresh" onClick={() => void load()}>
-          {loading ? '…' : '↻'}
+        <button className={`icon ${loading ? 'spinning' : ''}`} title="Refresh" aria-label="Refresh" onClick={() => void load()}>
+          <IconRefresh size={14} />
         </button>
       </div>
 
       {pr && (
         <button className={`wb-pr ${pr.checks ?? ''}`} onClick={() => api.openExternal(pr.url)}>
-          <span className="wb-pr-num">#{pr.number}</span>
-          <span className="wb-pr-title">{pr.title}</span>
+          <span className="wb-pr-icon">
+            <IconPr size={15} />
+          </span>
+          <span className="wb-pr-title">
+            {pr.title}
+          </span>
           <span className="wb-pr-meta">
-            {pr.isDraft ? 'draft' : pr.state.toLowerCase()}
-            {pr.checks && ` · checks ${pr.checks}`}
-            {pr.reviewDecision && ` · ${pr.reviewDecision.toLowerCase().replace('_', ' ')}`}
+            <span className="wb-pill wb-pr-num">#{pr.number}</span>
+            <span className="wb-pill">{pr.isDraft ? 'Draft' : pr.state.charAt(0) + pr.state.slice(1).toLowerCase()}</span>
+            {pr.checks && <span className={`wb-pill checks ${pr.checks}`}>Checks {pr.checks}</span>}
+            {pr.reviewDecision && <span className="wb-pill">{pr.reviewDecision.charAt(0) + pr.reviewDecision.slice(1).toLowerCase().replace(/_/g, ' ')}</span>}
           </span>
         </button>
       )}
 
       <div className="wb-actions">
-        <button disabled={busy || !files.length} onClick={() => onAsk('Review the uncommitted changes, then commit them with a clear conventional commit message. Group into separate commits if they are unrelated.')}>
+        <button className="primary wb-commit" disabled={busy || !files.length} onClick={() => onAsk('Review the uncommitted changes, then commit them with a clear conventional commit message. Group into separate commits if they are unrelated.')}>
           Commit
         </button>
-        <button disabled={busy} onClick={() => onAsk(pr ? `Push the latest commits to the existing PR #${pr.number} and summarize what changed.` : 'Push this branch and open a pull request with gh. Write a concise description and link any Linear issue this work belongs to.')}>
+        <button
+          className="icon-btn"
+          title={pr ? `Push to #${pr.number}` : 'Push and open a pull request'}
+          aria-label={pr ? 'Push' : 'Open PR'}
+          disabled={busy}
+          onClick={() => onAsk(pr ? `Push the latest commits to the existing PR #${pr.number} and summarize what changed.` : 'Push this branch and open a pull request with gh. Write a concise description and link any Linear issue this work belongs to.')}>
+          <IconPush size={14} />
           {pr ? 'Push' : 'Open PR'}
         </button>
-        <button disabled={busy} onClick={() => onAsk('Update this branch with the latest default branch (fetch, then rebase if the branch is unpushed, otherwise merge). Resolve simple conflicts; stop and ask me about anything non-trivial.')}>
+        <button className="icon-btn" title="Sync with the default branch" aria-label="Sync" disabled={busy} onClick={() => onAsk('Update this branch with the latest default branch (fetch, then rebase if the branch is unpushed, otherwise merge). Resolve simple conflicts; stop and ask me about anything non-trivial.')}>
+          <IconSync size={14} />
           Sync
         </button>
-        <button disabled={busy || !files.length} onClick={() => onAsk('Review the current uncommitted diff like a senior engineer: bugs, risky changes, missing tests. Be concise; do not change files.')}>
+        <button className="ghost wb-review" disabled={busy || !files.length} onClick={() => onAsk('Review the current uncommitted diff like a senior engineer: bugs, risky changes, missing tests. Be concise; do not change files.')}>
           Review
         </button>
       </div>
@@ -130,10 +147,11 @@ function GitTab({
       <div className="wb-section">Recent commits</div>
       <div className="wb-commits">
         {(status.commits ?? []).map((c) => (
-          <div key={c.hash} className="wb-commit" title={`${c.author} · ${c.when}`}>
-            <span className="wb-hash">{c.hash}</span>
+          <div key={c.hash} className="wb-commit" title={`${c.subject}\n${c.author} · ${c.when}`}>
             <span className="wb-subject">{c.subject}</span>
-            <span className="wb-when">{c.when.replace(' ago', '')}</span>
+            <span className="wb-commit-meta">
+              <span className="wb-hash">{c.hash}</span> · {c.author} · {shortAge(c.when, true)}
+            </span>
           </div>
         ))}
       </div>
@@ -143,8 +161,8 @@ function GitTab({
           <div className="panel diff-panel" onClick={(e) => e.stopPropagation()}>
             <div className="panel-head">
               <h2 className="mono">{diff.path}</h2>
-              <button className="icon" onClick={() => setDiff(null)}>
-                ×
+              <button className="icon" onClick={() => setDiff(null)} aria-label="Close">
+                <IconX size={15} />
               </button>
             </div>
             <pre className="diff">
@@ -174,10 +192,12 @@ function GitTab({
 
 function LinearTab({
   onWork,
-  repoFor
+  repoFor,
+  activeIssue
 }: {
   onWork: (issue: LinearIssue) => void
   repoFor: (teamKey: string) => string | undefined
+  activeIssue?: string
 }) {
   const [conn, setConn] = useState<{ connected: boolean; user?: string; error?: string } | null>(null)
   const [key, setKey] = useState('')
@@ -260,8 +280,8 @@ function LinearTab({
     <div className="wb-linear">
       <div className="wb-head">
         <input className="wb-filter" placeholder="Filter my issues…" value={filter} onChange={(e) => setFilter(e.target.value)} />
-        <button className="icon" title="Refresh" onClick={() => void loadIssues()}>
-          ↻
+        <button className="icon" title="Refresh" aria-label="Refresh" onClick={() => void loadIssues()}>
+          <IconRefresh size={14} />
         </button>
       </div>
       {error && <div className="error">{error}</div>}
@@ -269,21 +289,22 @@ function LinearTab({
       {issues && grouped.length === 0 && <div className="wb-empty">No open issues assigned to you.</div>}
       <div className="wb-issues">
         {grouped.map((i) => (
-          <div key={i.id} className="wb-issue">
+          <div key={i.id} className={`wb-issue ${i.identifier === activeIssue ? 'current' : ''}`}>
             <div className="wb-issue-top">
               <span className={`prio p${i.priority}`} title={i.priorityLabel} />
               <button className="wb-ident" onClick={() => api.openExternal(i.url)} title="Open in Linear">
                 {i.identifier}
               </button>
-              <span className="wb-state" style={{ color: i.state.color }}>
+              <span className="wb-proj" title={repoFor(i.teamKey) ?? 'Uses the current workspace; remembered after first use'}>
+                {repoFor(i.teamKey)?.split('/').pop() ?? 'current workspace'}
+              </span>
+              <span className="wb-state">
+                <span className="state-dot" style={{ background: i.state.color }} />
                 {i.state.name}
               </span>
             </div>
-            <div className="wb-issue-title">{i.title}</div>
             <div className="wb-issue-foot">
-              <span className="wb-dim" title={repoFor(i.teamKey) ?? 'Uses the current workspace; remembered after first use'}>
-                {repoFor(i.teamKey)?.split('/').pop() ?? 'current workspace'}
-              </span>
+              <div className="wb-issue-title">{i.title}</div>
               <button className="wb-work" onClick={() => onWork(i)}>
                 Work on it →
               </button>
@@ -294,14 +315,14 @@ function LinearTab({
       <div className="wb-foot">
         Connected as {conn.user} ·{' '}
         <button
-          className="link"
+          className="link quiet-danger"
           onClick={async () => {
             await api.linear.clearKey()
             setConn({ connected: false })
             setIssues(null)
           }}
         >
-          disconnect
+          Disconnect
         </button>
       </div>
     </div>
@@ -315,6 +336,7 @@ export function Workbench(props: {
   onAsk: (prompt: string) => void
   onWork: (issue: LinearIssue) => void
   repoFor: (teamKey: string) => string | undefined
+  activeIssue?: string
 }) {
   const [tab, setTab] = useState<Tab>(() => {
     try {
@@ -345,7 +367,7 @@ export function Workbench(props: {
         {tab === 'git' ? (
           <GitTab cwd={props.cwd} refreshKey={props.refreshKey} onAsk={props.onAsk} busy={props.busy} />
         ) : (
-          <LinearTab onWork={props.onWork} repoFor={props.repoFor} />
+          <LinearTab onWork={props.onWork} repoFor={props.repoFor} activeIssue={props.activeIssue} />
         )}
       </div>
     </aside>

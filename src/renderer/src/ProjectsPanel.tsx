@@ -4,10 +4,11 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { KnowledgeItem, KnowledgeOverview, OpenLoop, ProjectDigest, Settings } from '@shared/types'
 import { FocusPicker, FolderList, SOURCE_LABEL, SourceList, timeAgo, useSyncProgress } from './knowledgeUi'
+import { IconPlug, IconRefresh, IconSettings, IconX } from './icons'
 
 const api = window.jarvis
 type View = { kind: 'project'; id: string } | { kind: 'elsewhere' } | { kind: 'sources' } | { kind: 'focus' }
-type Tab = 'brief' | 'loops' | 'activity'
+type Tab = 'brief' | 'loops' | 'activity' | 'settings'
 
 const LOOP_LABEL: Record<OpenLoop['kind'], string> = {
   review: 'waiting on you',
@@ -44,16 +45,20 @@ export function ProjectsPanel({
   const current = view?.kind === 'project' ? ov?.projects.find((d) => d.project.id === view.id) : undefined
 
   return (
-    <div className="overlay" onClick={onClose}>
+    <div className="overlay page">
       <div className="panel projects-panel" onClick={(e) => e.stopPropagation()}>
         <div className="panel-head">
           <h2>Projects</h2>
           <div className="proj-head-right">
-            <span className="sync-line">
-              {progress ? progress.message : ov ? `${ov.totalItems.toLocaleString()} items` : ''}
-            </span>
-            <button className="ghost" disabled={!!progress && progress.phase !== 'done'} onClick={() => void api.knowledge.sync()}>
-              Sync now
+            {progress && progress.phase !== 'done' && <span className="sync-line">{progress.message}</span>}
+            <button
+              className={`icon-btn ${progress && progress.phase !== 'done' ? 'spinning' : ''}`}
+              title={`Sync now${ov ? ` · ${ov.totalItems.toLocaleString()} items indexed` : ''}`}
+              aria-label="Sync now"
+              disabled={!!progress && progress.phase !== 'done'}
+              onClick={() => void api.knowledge.sync()}
+            >
+              <IconRefresh size={15} />
             </button>
           </div>
         </div>
@@ -78,10 +83,12 @@ export function ProjectsPanel({
               </button>
             )}
             <div className="proj-nav-sep" />
-            <button className={`proj-nav-item ${view?.kind === 'focus' ? 'active' : ''}`} onClick={() => setView({ kind: 'focus' })}>
+            <button className={`proj-nav-item action ${view?.kind === 'focus' ? 'active' : ''}`} onClick={() => setView({ kind: 'focus' })}>
+              <IconSettings size={14} />
               Change focus…
             </button>
-            <button className={`proj-nav-item ${view?.kind === 'sources' ? 'active' : ''}`} onClick={() => setView({ kind: 'sources' })}>
+            <button className={`proj-nav-item action ${view?.kind === 'sources' ? 'active' : ''}`} onClick={() => setView({ kind: 'sources' })}>
+              <IconPlug size={14} />
               Sources
             </button>
           </nav>
@@ -115,11 +122,6 @@ export function ProjectsPanel({
           </div>
         </div>
 
-        <div className="panel-actions">
-          <button className="ghost" onClick={onClose}>
-            Close
-          </button>
-        </div>
       </div>
     </div>
   )
@@ -190,9 +192,9 @@ function ProjectView({ digest, onAsk }: { digest: ProjectDigest; onAsk(prompt: s
       </div>
 
       <div className="tabs proj-tabs">
-        {(['brief', 'loops', 'activity'] as Tab[]).map((t) => (
+        {(['brief', 'loops', 'activity', 'settings'] as Tab[]).map((t) => (
           <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-            {t === 'loops' ? `Open loops${digest.loops.length ? ` · ${digest.loops.length}` : ''}` : t}
+            {t === 'loops' ? `Open loops${digest.loops.length ? ` · ${digest.loops.length}` : ''}` : t[0].toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
@@ -215,6 +217,10 @@ function ProjectView({ digest, onAsk }: { digest: ProjectDigest; onAsk(prompt: s
                 {briefing ? 'Writing…' : 'Rewrite brief'}
               </button>
             </div>
+          </>
+        )}
+        {tab === 'settings' && (
+          <>
             <div className="proj-fields">
               <label className="field">
                 <span>
@@ -268,7 +274,7 @@ function LoopList({ loops, empty }: { loops: OpenLoop[]; empty?: string }) {
             </div>
           </div>
           <button className="icon del" title="Dismiss until it changes" onClick={() => api.knowledge.dismissLoop(l.key)}>
-            ×
+            <IconX size={13} />
           </button>
         </div>
       ))}

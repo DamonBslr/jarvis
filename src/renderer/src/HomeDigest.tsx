@@ -28,7 +28,7 @@ export function HomeDigest({ onAsk, onOpen }: { onAsk(prompt: string, cwd?: stri
             : 'Your projects'}
         </span>
         <button
-          className="link"
+          className="ghost small"
           onClick={() => {
             void api.knowledge.markSeen()
             onAsk("What did I miss? Go through my focus projects: what changed, what's waiting on me, and what I should do first today.")
@@ -45,9 +45,11 @@ export function HomeDigest({ onAsk, onOpen }: { onAsk(prompt: string, cwd?: stri
             title={`Ask about ${d.project.name}`}
             onClick={() => onAsk(`Catch me up on ${d.project.name}: where things stand, what's waiting on me, and what I should do next.`, d.project.path)}
           >
-            {d.project.name}
-            <span className="mem-meta">{d.counts.week} this week</span>
-            {d.loops.length > 0 && <span className="loop-count">{d.loops.length}</span>}
+            <span className="digest-chip-name">{d.project.name}</span>
+            <span className="digest-chip-stats">
+              {d.counts.week} this week
+              {d.loops.length > 0 && ` · ${d.loops.length} open`}
+            </span>
           </button>
         ))}
       </div>
@@ -57,7 +59,7 @@ export function HomeDigest({ onAsk, onOpen }: { onAsk(prompt: string, cwd?: stri
             <div key={l.key} className="digest-loop">
               <span className={`loop-dot ${l.kind}`} />
               <span className="digest-loop-title">{l.title}</span>
-              {name(l.projectId) && <span className="mem-meta">{name(l.projectId)}</span>}
+              <span className="mem-meta">{name(l.projectId) ?? 'elsewhere'}</span>
             </div>
           ))}
         </div>
