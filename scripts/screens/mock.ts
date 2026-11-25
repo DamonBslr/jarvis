@@ -380,6 +380,7 @@ const api: JarvisApi = {
     transcribe: ok(''),
     speak: noop,
     say: noop,
+    render: async () => null,
     stopSpeaking: noop,
     onSpeaking: on('speaking'),
     downloadModel: noop,
