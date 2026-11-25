@@ -23,7 +23,7 @@ import { HomeDigest } from './HomeDigest'
 import { applyEvent, historyFor, uid } from '@shared/chat'
 import { Mic, recordUtterance, type Utterance } from './voice'
 import { LIVE_SYSTEM_PROMPT, LiveLoop, type LivePhase } from './live'
-import { IconArrowUp, IconBrain, IconClock, IconCompose, IconFolder, IconLayers, IconPanelRight, IconSettings, IconStop, IconX, IconTicket, IconChevronDown } from './icons'
+import { IconArrowUp, IconBrain, IconClock, IconCompose, IconFolder, IconLayers, IconPanelRight, IconSettings, IconStop, IconX, IconTicket, IconChevronDown, IconSparkle } from './icons'
 
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
 
@@ -813,6 +813,9 @@ export function App() {
         <header className="topbar drag">
           {active ? (
             <div className="controls no-drag">
+              <span className="ctl-icon">
+                <IconSparkle size={14} />
+              </span>
               <select className="ctl-mode" value={active.modeId} onChange={(e) => setMode(e.target.value)} title="Mode">
                 {modes.map((m) => (
                   <option key={m.id} value={m.id}>
@@ -846,6 +849,11 @@ export function App() {
                     <option key={m}>{m}</option>
                   ))}
                 </select>
+              )}
+              {active.provider !== 'ollama' && (
+                <span className="ctl-icon">
+                  <IconCompose size={14} />
+                </span>
               )}
               {active.provider !== 'ollama' && (
                 <select
@@ -1037,6 +1045,7 @@ export function App() {
           onAsk={(prompt) => void send(prompt, active)}
           onWork={(issue) => void startTicket(issue)}
           repoFor={(team) => settings.linearRepoMap[team]}
+          activeIssue={active.linear?.identifier}
         />
       )}
 

@@ -190,10 +190,12 @@ function GitTab({
 
 function LinearTab({
   onWork,
-  repoFor
+  repoFor,
+  activeIssue
 }: {
   onWork: (issue: LinearIssue) => void
   repoFor: (teamKey: string) => string | undefined
+  activeIssue?: string
 }) {
   const [conn, setConn] = useState<{ connected: boolean; user?: string; error?: string } | null>(null)
   const [key, setKey] = useState('')
@@ -285,22 +287,22 @@ function LinearTab({
       {issues && grouped.length === 0 && <div className="wb-empty">No open issues assigned to you.</div>}
       <div className="wb-issues">
         {grouped.map((i) => (
-          <div key={i.id} className="wb-issue">
+          <div key={i.id} className={`wb-issue ${i.identifier === activeIssue ? 'current' : ''}`}>
             <div className="wb-issue-top">
               <span className={`prio p${i.priority}`} title={i.priorityLabel} />
               <button className="wb-ident" onClick={() => api.openExternal(i.url)} title="Open in Linear">
                 {i.identifier}
               </button>
+              <span className="wb-proj" title={repoFor(i.teamKey) ?? 'Uses the current workspace; remembered after first use'}>
+                {repoFor(i.teamKey)?.split('/').pop() ?? 'current workspace'}
+              </span>
               <span className="wb-state">
                 <span className="state-dot" style={{ background: i.state.color }} />
                 {i.state.name}
               </span>
             </div>
-            <div className="wb-issue-title">{i.title}</div>
             <div className="wb-issue-foot">
-              <span className="wb-dim" title={repoFor(i.teamKey) ?? 'Uses the current workspace; remembered after first use'}>
-                {repoFor(i.teamKey)?.split('/').pop() ?? 'current workspace'}
-              </span>
+              <div className="wb-issue-title">{i.title}</div>
               <button className="wb-work" onClick={() => onWork(i)}>
                 Work on it →
               </button>
@@ -332,6 +334,7 @@ export function Workbench(props: {
   onAsk: (prompt: string) => void
   onWork: (issue: LinearIssue) => void
   repoFor: (teamKey: string) => string | undefined
+  activeIssue?: string
 }) {
   const [tab, setTab] = useState<Tab>(() => {
     try {
@@ -362,7 +365,7 @@ export function Workbench(props: {
         {tab === 'git' ? (
           <GitTab cwd={props.cwd} refreshKey={props.refreshKey} onAsk={props.onAsk} busy={props.busy} />
         ) : (
-          <LinearTab onWork={props.onWork} repoFor={props.repoFor} />
+          <LinearTab onWork={props.onWork} repoFor={props.repoFor} activeIssue={props.activeIssue} />
         )}
       </div>
     </aside>
