@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ConnectionsTab } from './ConnectionsTab'
-import type { ProviderStatus, Settings, UpdateState, VoiceProgress, VoiceStatus } from '@shared/types'
+import type { AppLanguage, ProviderStatus, Settings, UpdateState, VoiceProgress, VoiceStatus } from '@shared/types'
+import { GERMAN_VOICES, LANGUAGES } from '@shared/language'
 import { IconBrain, IconInfo, IconKeyboard, IconMic, IconPlug, IconSettings, IconWrench, IconX } from './icons'
 
 const api = window.jarvis
@@ -25,16 +26,11 @@ const MODELS: { id: string; label: string }[] = [
   { id: 'large-v3-turbo-q5_0', label: 'large-v3-turbo · 547 MB · best' }
 ]
 
-const LANGS = [
-  ['auto', 'Detect automatically'],
-  ['en', 'English'],
-  ['de', 'German'],
-  ['fr', 'French'],
-  ['it', 'Italian'],
-  ['es', 'Spanish'],
-  ['nl', 'Dutch'],
-  ['pt', 'Portuguese']
-]
+/** Switching language: English-only speech models can't hear German, so move to the multilingual twin. */
+function withLanguage(s: Settings, language: AppLanguage): Settings {
+  const voiceModel = language !== 'en' && s.voiceModel.endsWith('.en') ? (s.voiceModel === 'small.en' ? 'small' : 'base') : s.voiceModel
+  return { ...s, language, voiceModel }
+}
 
 // Kokoro v1.0 voices worth hearing (the rest of the set is noticeably weaker).
 const NEURAL_VOICES: [string, string][] = [
@@ -74,6 +70,10 @@ function VoiceTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
   const neuralP = progress.neural
   const neuralBusy = neuralP && !neuralP.done && !neuralP.error
   const neuralReady = status.neural.uv && status.neural.downloaded
+  const germanP = progress.german
+  const germanBusy = germanP && !germanP.done && !germanP.error
+  const germanReady = status.neural.uv && status.german.downloaded.includes(s.germanVoice)
+  const germanMb = GERMAN_VOICES.find((v) => v.id === s.germanVoice)?.mb
 
   return (
     <>
@@ -115,6 +115,9 @@ function VoiceTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
               </div>
             )}
             {modelP?.error && <small className="error-inline">{modelP.error}</small>}
+            {s.language !== 'en' && s.voiceModel.endsWith('.en') && (
+              <small className="error-inline">English-only model: pick a multilingual one to speak {LANGUAGES[s.language].label}.</small>
+            )}
           </div>
           {!status.model.downloaded && (
             <button className="ghost" disabled={!!downloading} onClick={() => void api.voice.downloadModel(s.voiceModel).catch(() => {})}>
@@ -145,7 +148,7 @@ function VoiceTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
         <div className="setup-row">
           <span className={`health-dot ${neuralReady ? 'ok' : 'off'}`} />
           <div className="setup-main">
-            <div>Natural voice (Kokoro, on this Mac)</div>
+            <div>Natural English voice (Kokoro, on this Mac)</div>
             <small>
               {!status.neural.uv
                 ? 'Needs uv to run: brew install uv'
@@ -168,19 +171,48 @@ function VoiceTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
             </button>
           )}
         </div>
+
+        {s.language === 'de' && (
+          <div className="setup-row">
+            <span className={`health-dot ${germanReady ? 'ok' : 'off'}`} />
+            <div className="setup-main">
+              <div>Natural German voice (Piper, on this Mac)</div>
+              <small>
+                {!status.neural.uv
+                  ? 'Needs uv to run: brew install uv'
+                  : germanReady
+                    ? 'Installed'
+                    : germanBusy
+                      ? (germanP?.step ?? 'Downloading…')
+                      : 'Not downloaded. German replies use a macOS German voice until then.'}
+                {germanP?.error && <span className="error-inline"> {germanP.error}</span>}
+              </small>
+              {germanBusy && (
+                <div className="progress">
+                  <div style={{ width: `${Math.round((germanP?.progress ?? 0) * 100)}%` }} />
+                </div>
+              )}
+            </div>
+            {status.neural.uv && !germanReady && (
+              <button
+                className="ghost"
+                disabled={!!germanBusy}
+                onClick={() => void api.voice.downloadGermanVoice(s.germanVoice).catch(() => {})}
+              >
+                {germanBusy ? `${Math.round((germanP?.progress ?? 0) * 100)}%` : `Download ${germanMb ?? ''} MB`}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="row-pair">
         <label className="row">
-          <span>Spoken language</span>
-          <select
-            value={s.voiceModel.endsWith('.en') ? 'en' : s.voiceLanguage}
-            disabled={s.voiceModel.endsWith('.en')}
-            onChange={(e) => setS({ ...s, voiceLanguage: e.target.value })}
-          >
-            {LANGS.map(([id, label]) => (
+          <span>Language</span>
+          <select value={s.language} onChange={(e) => setS(withLanguage(s, e.target.value as AppLanguage))}>
+            {Object.entries(LANGUAGES).map(([id, l]) => (
               <option key={id} value={id}>
-                {label}
+                {l.label}
               </option>
             ))}
           </select>
@@ -188,22 +220,31 @@ function VoiceTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
         <label className="row">
           <span>Reply voice</span>
           <select
-            value={s.ttsEngine === 'neural' ? `n:${s.neuralVoice}` : 'system'}
-            onChange={(e) =>
-              setS(
-                e.target.value === 'system'
-                  ? { ...s, ttsEngine: 'system' }
-                  : { ...s, ttsEngine: 'neural', neuralVoice: e.target.value.slice(2) }
-              )
-            }
+            value={s.ttsEngine === 'neural' ? `n:${s.language === 'de' ? s.germanVoice : s.neuralVoice}` : 'system'}
+            onChange={(e) => {
+              const v = e.target.value
+              if (v === 'system') return setS({ ...s, ttsEngine: 'system' })
+              const id = v.slice(2)
+              setS(s.language === 'de' ? { ...s, ttsEngine: 'neural', germanVoice: id } : { ...s, ttsEngine: 'neural', neuralVoice: id })
+            }}
           >
-            <optgroup label="Natural (Kokoro)">
-              {NEURAL_VOICES.map(([id, label]) => (
-                <option key={id} value={`n:${id}`}>
-                  {label}
-                </option>
-              ))}
-            </optgroup>
+            {s.language === 'de' ? (
+              <optgroup label="Natural (Piper)">
+                {GERMAN_VOICES.map((v) => (
+                  <option key={v.id} value={`n:${v.id}`}>
+                    {v.label}
+                  </option>
+                ))}
+              </optgroup>
+            ) : (
+              <optgroup label="Natural (Kokoro)">
+                {NEURAL_VOICES.map(([id, label]) => (
+                  <option key={id} value={`n:${id}`}>
+                    {label}
+                  </option>
+                ))}
+              </optgroup>
+            )}
             <option value="system">macOS voice</option>
           </select>
         </label>
@@ -226,7 +267,7 @@ function VoiceTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
           <span />
         )}
         <label className="row">
-          <span>{s.ttsEngine === 'neural' ? 'Fallback voice (German etc.)' : 'macOS voice'}</span>
+          <span>{s.ttsEngine === 'neural' ? 'Fallback voice (macOS)' : 'macOS voice'}</span>
           <select value={s.ttsVoice} onChange={(e) => setS({ ...s, ttsVoice: e.target.value })}>
             <option value="">System default</option>
             {status.voices.map((v) => (
@@ -241,11 +282,18 @@ function VoiceTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
         <div>
           <div>Answer out loud when I speak</div>
           <small>
-            {s.ttsEngine === 'neural' && neuralReady
+            {s.ttsEngine === 'neural' && (s.language === 'de' ? germanReady : neuralReady)
               ? 'Natural voice, generated on this Mac.'
               : 'Uses macOS speech.'}{' '}
             Code blocks are skipped. Save, then{' '}
-            <button className="link" onClick={() => void api.voice.speak("Good afternoon. I'm Jarvis, and I'm listening.")}>
+            <button
+              className="link"
+              onClick={() =>
+                void api.voice.speak(
+                  s.language === 'de' ? 'Guten Tag. Ich bin Jarvis und höre zu.' : "Good afternoon. I'm Jarvis, and I'm listening."
+                )
+              }
+            >
               Test voice
             </button>
           </small>
@@ -457,6 +505,23 @@ export function SettingsPanel({
         <div className="settings-body">
           {tab === 'general' && (
             <>
+              <h3 className="settings-section">Language</h3>
+              <div className="form-group">
+                <label className="row">
+                  <span>Jarvis speaks</span>
+                  <select value={s.language} onChange={(e) => setS(withLanguage(s, e.target.value as AppLanguage))}>
+                    {Object.entries(LANGUAGES).map(([id, l]) => (
+                      <option key={id} value={id}>
+                        {l.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <small className="wb-dim">
+                  Replies, voice input and the reply voice all use this language. Jarvis won't switch on its own.
+                </small>
+              </div>
+
               <h3 className="settings-section">Agents</h3>
               <div className="form-group">
                 <label className="row check">

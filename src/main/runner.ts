@@ -12,6 +12,7 @@ import { buildContext } from './memory/context'
 import { learnFromTurn } from './memory/learn'
 import { bridgeLaunch, respondApproval } from './mcp/server'
 import { collectTools } from './tools'
+import { languageInstruction, languageOf } from '@shared/language'
 
 export const providers: Record<ProviderId, Provider> = {
   claude: claudeProvider,
@@ -103,6 +104,9 @@ export async function startRun(req: RunRequest, sink: RunSink, owner: WebContent
       send({ kind: 'log', message: `memory lookup failed: ${String(err)}` })
     }
   }
+
+  // Every turn, every provider: answer in the language the user picked, not one guessed from the input.
+  req = { ...req, context: [req.context, languageInstruction(languageOf(settings.language))].filter(Boolean).join('\n\n') }
 
   // Jarvis tools for the agent: memory + Linear always, approval popups for Claude when someone can answer.
   if (req.provider !== 'ollama') {

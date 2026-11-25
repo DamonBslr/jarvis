@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, rm, writeFile, rename } from 'node:fs/promise
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import type { Conversation, Settings } from '@shared/types'
+import { DEFAULT_GERMAN_VOICE, languageOf } from '@shared/language'
 
 const dir = () => join(app.getPath('userData'), 'conversations')
 const settingsPath = () => join(app.getPath('userData'), 'settings.json')
@@ -23,11 +24,12 @@ export const DEFAULT_SETTINGS: Settings = {
   quickHotkey: 'Alt+Space',
   voiceHotkey: 'Alt+Shift+Space',
   voiceModel: 'base',
-  voiceLanguage: 'auto',
+  language: 'en',
   speakReplies: true,
   ttsVoice: '',
   ttsEngine: 'neural',
   neuralVoice: 'bm_george',
+  germanVoice: DEFAULT_GERMAN_VOICE,
   ttsSpeed: 1.05,
   wakeWord: false,
   liveHotkey: 'Alt+Shift+L',
@@ -78,7 +80,12 @@ export async function deleteConversation(id: string) {
 
 export async function getSettings(): Promise<Settings> {
   try {
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(await readFile(settingsPath(), 'utf8')) }
+    const saved = JSON.parse(await readFile(settingsPath(), 'utf8'))
+    // Older builds had a transcription-only "voiceLanguage" (often "auto"); only an explicit German choice carries over.
+    if (saved.language === undefined && saved.voiceLanguage === 'de') saved.language = 'de'
+    delete saved.voiceLanguage
+    const s: Settings = { ...DEFAULT_SETTINGS, ...saved }
+    return { ...s, language: languageOf(s.language) }
   } catch {
     return { ...DEFAULT_SETTINGS }
   }
