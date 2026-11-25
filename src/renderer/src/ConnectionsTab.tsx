@@ -310,8 +310,7 @@ export function ConnectionsTab() {
   return (
     <>
       <p className="panel-sub">
-        Services Jarvis's agents can use with your access. Keys and tokens stay encrypted in the macOS keychain; agents
-        get tools, never credentials. Agents can also set one up with you mid-chat (they ask, you sign in).
+        Services agents can use on your behalf. Keys stay in the macOS keychain; agents get tools, never credentials.
       </p>
       {error && (
         <div className="conn-error" onClick={() => setError(null)}>

@@ -5105,3 +5105,81 @@ kbd.on-primary {
   white-space: normal;
   overflow: visible;
 }
+
+/* Round 10 (Opus) */
+.conv-item {
+  color: var(--muted);
+}
+.conv-item:hover {
+  color: var(--text-2);
+}
+.conv-item.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  box-shadow: inset 2px 0 0 var(--accent-line);
+}
+.sidebar-foot {
+  border-top: 0;
+  margin: 0 12px;
+  padding: 8px 0 10px;
+  box-shadow: 0 -1px 0 var(--line-soft);
+}
+.provider-health {
+  border-top: 0;
+  font-size: 11px;
+  color: var(--faint);
+}
+/* PR banner as a tray attached to the composer */
+.composer-stack .pr-banner {
+  margin-bottom: 0;
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  background: color-mix(in srgb, var(--accent) 6%, var(--panel));
+}
+.composer-stack:has(.pr-banner) .composer-box,
+.composer-stack:has(.pr-banner) .composer-box:focus-within {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+/* Lighter focus: thin ring, softer composer glow */
+.primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px rgba(108, 200, 218, 0.32);
+}
+.composer-box:focus-within,
+.composer-stack:not(:has(.pr-banner)):focus-within {
+  box-shadow: var(--shadow-soft), 0 0 0 2px rgba(108, 200, 218, 0.05);
+}
+/* Shortcut chips inside buttons: legible sans glyphs */
+button kbd {
+  font-family: var(--sans);
+  font-size: 11px;
+  height: 18px;
+  padding: 0 6px;
+  letter-spacing: 0.02em;
+}
+kbd.on-primary {
+  background: rgba(255, 255, 255, 0.14);
+}
+/* Projects tabs keep their own casing */
+.proj-tabs button {
+  text-transform: none;
+}
+/* Routines: Run now appears on hover or focus */
+.routine-row .ghost.small {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.routine-row:hover .ghost.small,
+.routine-row:focus-within .ghost.small {
+  opacity: 1;
+}
+/* Connections intro: one quiet line */
+.settings-body > p.panel-sub:first-child,
+.settings-body .panel-sub {
+  font-size: 13px;
+  color: var(--muted);
+}
+.ticket-chip {
+  margin-right: 16px;
+}

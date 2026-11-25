@@ -194,7 +194,7 @@ function ProjectView({ digest, onAsk }: { digest: ProjectDigest; onAsk(prompt: s
       <div className="tabs proj-tabs">
         {(['brief', 'loops', 'activity', 'settings'] as Tab[]).map((t) => (
           <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-            {t === 'loops' ? `Open loops${digest.loops.length ? ` · ${digest.loops.length}` : ''}` : t}
+            {t === 'loops' ? `Open loops${digest.loops.length ? ` · ${digest.loops.length}` : ''}` : t[0].toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
