@@ -752,7 +752,7 @@ export function App() {
           <kbd>⌘N</kbd>
         </button>
         <nav className="conv-list">
-          {groupByDay(convs).map((g) => (
+          {groupByDay(convs.filter((c) => c.messages.length > 0 || c.id !== activeId)).map((g) => (
             <section key={g.label} className="conv-group">
               <div className="conv-group-label">{g.label}</div>
               {g.items.map((c) => (
@@ -926,7 +926,7 @@ export function App() {
                 <button className="primary" disabled={linking} onClick={() => void linkPr()}>
                   {linking ? 'Linking…' : 'Link PR'}
                 </button>
-                <button className="ghost" onClick={() => setDismissedPr((s) => new Set(s).add(active.id))}>
+                <button className="text-btn" onClick={() => setDismissedPr((s) => new Set(s).add(active.id))}>
                   Dismiss
                 </button>
               </div>

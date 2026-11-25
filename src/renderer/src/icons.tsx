@@ -168,6 +168,29 @@ export const IconTicket = (p: P) => (
     <path d="M12 3.5a8.5 8.5 0 0 1 0 17" fill="currentColor" stroke="none" opacity=".45" />
   </Svg>
 )
+export const IconMic = (p: P) => (
+  <Svg {...p}>
+    <rect x="9" y="3" width="6" height="11" rx="3" />
+    <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+  </Svg>
+)
+export const IconWrench = (p: P) => (
+  <Svg {...p}>
+    <path d="M14.5 5.5a4 4 0 0 0 5 5l-9 9a2.1 2.1 0 0 1-3-3l9-9a4 4 0 0 1-2-2Z" />
+  </Svg>
+)
+export const IconKeyboard = (p: P) => (
+  <Svg {...p}>
+    <rect x="3" y="6" width="18" height="12" rx="2.5" />
+    <path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10" />
+  </Svg>
+)
+export const IconInfo = (p: P) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v5M12 8h.01" />
+  </Svg>
+)
 export const IconCopy = (p: P) => (
   <Svg {...p}>
     <rect x="8" y="8" width="12" height="12" rx="2.5" />

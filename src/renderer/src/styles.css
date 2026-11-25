@@ -4662,3 +4662,167 @@ kbd.on-primary {
 .folder .ico:last-child {
   color: var(--faint);
 }
+
+/* Round 8 (Opus) */
+/* One filled teal per surface; flat primary with a single focus ring */
+.primary {
+  box-shadow: none;
+}
+.primary:focus-visible {
+  outline: 2px solid rgba(108, 200, 218, 0.45);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.primary:disabled {
+  background: var(--raised);
+  color: var(--faint);
+  opacity: 1;
+}
+.primary:disabled kbd {
+  opacity: 0.6;
+}
+.ghost.attention {
+  color: var(--warn);
+  border-color: rgba(231, 179, 87, 0.35);
+}
+.ghost.attention:hover:not(:disabled) {
+  background: rgba(231, 179, 87, 0.08);
+}
+.learned-tag {
+  color: var(--text-2);
+}
+.learned {
+  border-color: var(--line-soft);
+  background: rgba(255, 255, 255, 0.02);
+}
+/* PR banner: its own bar above the composer, small actions */
+.composer-stack:has(.pr-banner) {
+  border: 0;
+  background: none;
+  box-shadow: none;
+  overflow: visible;
+}
+.composer-stack:has(.pr-banner):focus-within {
+  border: 0;
+  box-shadow: none;
+}
+.composer-stack .pr-banner {
+  min-height: 40px;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.composer-stack:has(.pr-banner) .composer-box {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+}
+.composer-stack:has(.pr-banner) .composer-box:focus-within {
+  border-color: rgba(108, 200, 218, 0.45);
+  box-shadow: var(--shadow-soft), 0 0 0 3px rgba(108, 200, 218, 0.08);
+  border-radius: 14px;
+}
+.pr-banner .primary,
+.pr-banner .text-btn {
+  height: 26px;
+  min-height: 26px;
+  font-size: 12.5px;
+}
+.pr-banner .primary {
+  box-shadow: none;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+/* Toolbar: one label style, even gaps */
+.controls {
+  gap: 12px;
+}
+.controls select,
+.controls .ctl-mode,
+.controls .ctl-engine,
+.folder {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+  height: 30px;
+  line-height: 30px;
+  vertical-align: middle;
+}
+.controls select:hover,
+.folder:hover {
+  color: var(--text);
+}
+.controls .who-mark.sm {
+  margin: 0 -8px 0 0;
+}
+/* Dialog scrim: darker, softly blurred */
+.overlay:not(.page),
+.approval-overlay {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px) saturate(0.8);
+  -webkit-backdrop-filter: blur(6px) saturate(0.8);
+}
+/* Settings: nav icons, quieter group labels, room at the bottom */
+.panel.settings > .panel-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.panel.settings > .panel-tabs button .ico {
+  color: var(--faint);
+}
+.panel.settings > .panel-tabs button.active .ico {
+  color: var(--accent);
+}
+.panel.settings {
+  height: min(620px, 86vh);
+}
+.settings-section {
+  color: var(--faint);
+}
+.settings-body {
+  padding-bottom: 28px;
+}
+.conn-inline .ghost {
+  background: var(--raised);
+  color: var(--text-2);
+}
+/* One recessed field style everywhere except the composer */
+.wb-filter,
+.search-field .mem-search {
+  background-color: var(--field);
+}
+/* Home digest: a labelled section with even rows */
+.composer .digest .digest-head > span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--faint);
+}
+.digest-loop {
+  height: 32px;
+  border-radius: var(--radius-sm);
+  padding: 0 8px;
+  margin: 0 -8px;
+}
+.digest-loop:hover {
+  background: var(--hover);
+}
+.digest-loop .digest-loop-title {
+  flex: 0 1 auto;
+}
+.digest-loop .mem-meta {
+  font-size: 11.5px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--hover);
+  margin-right: auto;
+}
+.digest-chip {
+  align-items: baseline;
+}
+.conn-row .conn-actions > button.attention {
+  display: inline-flex;
+  opacity: 1;
+}

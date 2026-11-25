@@ -51,14 +51,13 @@ function ConnectionRow({ c, onError }: { c: ConnectionStatus; onError: (msg: str
         <small title={c.issuer && c.kind === 'oauth' ? `Revoke anytime at ${new URL(c.issuer).host} (client "Jarvis"), or remove it here.` : undefined}>
           {c.url}
           {c.account && <> · as {c.account}</>}
-          {!c.tools && c.lastUsedAt && <> · used {ago(c.lastUsedAt)}</>}
+          {c.lastUsedAt && <> · used {ago(c.lastUsedAt)}</>}
         </small>
         {c.state !== 'connected' && c.detail && <small className={c.state === 'needs-auth' ? 'warn-inline' : 'error-inline'}>{c.detail}</small>}
         {c.tools && (
           <details className="conn-tools">
             <summary>
               {c.tools.length} {c.tools.length === 1 ? 'tool' : 'tools'} · {c.tools.length - writes} read-only, {writes} can change things
-              {c.lastUsedAt && <span className="conn-used">used {ago(c.lastUsedAt)}</span>}
             </summary>
             <div>
               {c.kind !== 'browser' && <code className="conn-id">mcp__{c.id}</code>}
@@ -112,12 +111,12 @@ function ConnectionRow({ c, onError }: { c: ConnectionStatus; onError: (msg: str
           </select>
         )}
         {c.kind === 'oauth' && (
-          <button className={c.state === 'needs-auth' ? 'primary' : 'ghost'} disabled={!!busy} onClick={() => void run('reconnect', () => api.connections.reconnect(c.id))}>
+          <button className={c.state === 'needs-auth' ? 'ghost attention' : 'ghost'} disabled={!!busy} onClick={() => void run('reconnect', () => api.connections.reconnect(c.id))}>
             {busy === 'reconnect' ? 'Waiting for sign-in…' : 'Reconnect'}
           </button>
         )}
         {c.kind === 'token' && keyInput === null && (
-          <button className={c.state === 'needs-auth' ? 'primary' : 'ghost'} onClick={() => setKeyInput('')}>
+          <button className={c.state === 'needs-auth' ? 'ghost attention' : 'ghost'} onClick={() => setKeyInput('')}>
             Replace key
           </button>
         )}

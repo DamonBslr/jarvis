@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ConnectionsTab } from './ConnectionsTab'
 import type { ProviderStatus, Settings, UpdateState, VoiceProgress, VoiceStatus } from '@shared/types'
-import { IconX } from './icons'
+import { IconBrain, IconInfo, IconKeyboard, IconMic, IconPlug, IconSettings, IconWrench, IconX } from './icons'
 
 const api = window.jarvis
 
 type Tab = 'general' | 'memory' | 'voice' | 'tools' | 'connections' | 'shortcuts' | 'app'
+const TAB_ICON = {
+  general: IconSettings,
+  memory: IconBrain,
+  voice: IconMic,
+  tools: IconWrench,
+  connections: IconPlug,
+  shortcuts: IconKeyboard,
+  app: IconInfo
+} as const
 
 const MODELS: { id: string; label: string }[] = [
   { id: 'tiny.en', label: 'tiny.en · 75 MB · fastest, English' },
@@ -434,11 +443,15 @@ export function SettingsPanel({
           </button>
         </div>
         <div className="tabs panel-tabs">
-          {(['general', 'memory', 'voice', 'tools', 'connections', 'shortcuts', 'app'] as Tab[]).map((t) => (
-            <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-              {t}
-            </button>
-          ))}
+          {(['general', 'memory', 'voice', 'tools', 'connections', 'shortcuts', 'app'] as Tab[]).map((t) => {
+            const Icon = TAB_ICON[t]
+            return (
+              <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
+                <Icon size={15} />
+                {t}
+              </button>
+            )
+          })}
         </div>
 
         <div className="settings-body">
@@ -456,7 +469,7 @@ export function SettingsPanel({
                     <div>Use my Claude subscription</div>
                     <small>
                       Hides <code>ANTHROPIC_API_KEY</code> from Claude Code so it uses your Pro/Max login instead of
-                      per-token API billing.
+                      per‑token API billing.
                       {claude?.detail && <strong> {claude.detail}.</strong>}
                     </small>
                   </div>
