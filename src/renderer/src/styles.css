@@ -5183,3 +5183,81 @@ kbd.on-primary {
 .ticket-chip {
   margin-right: 16px;
 }
+
+/* Round 10 (GPT) */
+/* Useful metadata reads, not disabled */
+.digest-chip-stats,
+.wb-commit-meta,
+.conn-row .setup-main > small:first-of-type,
+.conn-tools summary {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+/* Home digest hierarchy */
+.composer .digest {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line-soft);
+}
+.composer .digest .digest-head > span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.digest-chip-name {
+  font-weight: 500;
+}
+.digest-projects {
+  margin-bottom: 16px;
+}
+/* Calmer dialog scrim */
+.overlay:not(.page),
+.approval-overlay {
+  background: rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+/* Settings scroll edge: short fade and a visible thumb */
+.settings-body {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.settings-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+}
+/* Git actions: one family of 30px labelled controls */
+.wb-actions .icon-btn {
+  width: auto;
+  display: inline-flex;
+  gap: 6px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.wb-actions .wb-commit,
+.wb-actions .wb-review,
+.wb-actions .icon-btn {
+  height: 30px;
+}
+.wb-actions .wb-commit {
+  border-radius: 6px;
+}
+.wb-actions .wb-commit + .icon-btn {
+  border-radius: 6px 0 0 6px;
+}
+.wb-actions .icon-btn + .icon-btn {
+  border-radius: 0 6px 6px 0;
+}
+.wb-actions .wb-review {
+  border-radius: 6px;
+}
+/* Composer focus: crisp edge, no halo */
+.composer-stack:not(:has(.pr-banner)):focus-within,
+.composer-stack:has(.pr-banner) .composer-box:focus-within {
+  border-color: rgba(108, 200, 218, 0.5);
+  box-shadow: var(--shadow-soft);
+}
+.composer .digest {
+  border-radius: 0;
+}

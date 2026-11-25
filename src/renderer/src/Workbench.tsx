@@ -110,10 +110,12 @@ function GitTab({
           aria-label={pr ? 'Push' : 'Open PR'}
           disabled={busy}
           onClick={() => onAsk(pr ? `Push the latest commits to the existing PR #${pr.number} and summarize what changed.` : 'Push this branch and open a pull request with gh. Write a concise description and link any Linear issue this work belongs to.')}>
-          <IconPush size={16} />
+          <IconPush size={14} />
+          {pr ? 'Push' : 'Open PR'}
         </button>
         <button className="icon-btn" title="Sync with the default branch" aria-label="Sync" disabled={busy} onClick={() => onAsk('Update this branch with the latest default branch (fetch, then rebase if the branch is unpushed, otherwise merge). Resolve simple conflicts; stop and ask me about anything non-trivial.')}>
-          <IconSync size={16} />
+          <IconSync size={14} />
+          Sync
         </button>
         <button className="ghost wb-review" disabled={busy || !files.length} onClick={() => onAsk('Review the current uncommitted diff like a senior engineer: bugs, risky changes, missing tests. Be concise; do not change files.')}>
           Review
