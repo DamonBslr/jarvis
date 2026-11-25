@@ -364,6 +364,7 @@ export function QuickBar() {
               ◼︎ voice
             </button>
           )}
+          {!runId && !speaking && <span className="quick-enter">{draft.trim() ? '↵ ask' : ''}</span>}
           {runId ? (
             <button className="quick-btn no-drag" title="Stop (⌘.)" onClick={() => void api.cancel(runId)}>
               Stop

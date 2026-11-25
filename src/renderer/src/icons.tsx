@@ -191,6 +191,12 @@ export const IconInfo = (p: P) => (
     <path d="M12 11v5M12 8h.01" />
   </Svg>
 )
+export const IconStars = (p: P) => (
+  <Svg {...p}>
+    <path d="M10 4c.5 3.5 2 5 5.5 5.5-3.5.5-5 2-5.5 5.5-.5-3.5-2-5-5.5-5.5C8 9 9.5 7.5 10 4Z" />
+    <path d="M17.5 14c.3 1.8 1 2.5 2.5 2.7-1.5.3-2.2 1-2.5 2.8-.3-1.8-1-2.5-2.5-2.8 1.5-.2 2.2-.9 2.5-2.7Z" />
+  </Svg>
+)
 export const IconCopy = (p: P) => (
   <Svg {...p}>
     <rect x="8" y="8" width="12" height="12" rx="2.5" />

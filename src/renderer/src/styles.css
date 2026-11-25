@@ -5316,3 +5316,94 @@ kbd.on-primary {
   grid-template-columns: 160px 1fr;
   gap: 24px;
 }
+
+/* Round 11 (Opus) */
+/* Selected chat: a straight accent bar, not a curved bracket */
+.conv-item.active {
+  box-shadow: none;
+}
+.conv-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent-line);
+}
+.app.page-open .conv-item.active::before {
+  display: none;
+}
+/* Toolbar glyphs all muted; engine mark without a box */
+.folder .ico,
+.ctl-icon .ico {
+  color: var(--muted);
+}
+.controls .who-mark.sm {
+  background: none;
+  box-shadow: none;
+  width: 14px;
+  font-size: 11px;
+}
+/* Projects: no floating divider */
+.proj-nav {
+  border-right: 0;
+}
+/* One tag style: outlined, no fill */
+.digest-loop .mem-meta,
+.conv-tag {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font-size: 11px;
+  padding: 0 6px;
+  line-height: 18px;
+}
+/* Push | Sync: a single seam */
+.wb-actions .icon-btn + .icon-btn {
+  margin-left: -9px;
+  border-left: 1px solid var(--line);
+  box-shadow: none;
+}
+.wb-actions .wb-commit + .icon-btn {
+  border-right: 0;
+}
+/* Composer: calm resting focus, neutral inner divider, quiet send until there's text */
+.composer-stack .pr-banner {
+  border-bottom: 1px solid var(--line-soft);
+}
+.composer-stack:has(.pr-banner) .composer-box,
+.composer-stack:has(.pr-banner) .composer-box:focus-within {
+  border-top-color: transparent;
+}
+.composer-stack:not(:has(.pr-banner)):focus-within,
+.composer-stack:has(.pr-banner) .composer-box:focus-within {
+  border-color: rgba(108, 200, 218, 0.32);
+}
+.composer-stack:has(.pr-banner):has(.composer-box:focus-within) .pr-banner {
+  border-color: rgba(108, 200, 218, 0.32);
+  border-bottom-color: var(--line-soft);
+}
+.send:disabled {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--faint);
+  opacity: 0.6;
+}
+/* Quick bar: calmer placeholder, material edge, enter hint */
+.quick {
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.quick-input {
+  font-size: 17px;
+}
+.quick-enter {
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+/* Linear: refresh centred with the filter */
+.wb-linear .wb-head {
+  align-items: center;
+}

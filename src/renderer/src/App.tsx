@@ -23,7 +23,7 @@ import { HomeDigest } from './HomeDigest'
 import { applyEvent, historyFor, uid } from '@shared/chat'
 import { Mic, recordUtterance, type Utterance } from './voice'
 import { LIVE_SYSTEM_PROMPT, LiveLoop, type LivePhase } from './live'
-import { IconArrowUp, IconBrain, IconClock, IconCompose, IconFolder, IconLayers, IconPanelRight, IconSettings, IconStop, IconX, IconTicket, IconChevronDown, IconSparkle } from './icons'
+import { IconArrowUp, IconBrain, IconClock, IconCompose, IconFolder, IconLayers, IconPanelRight, IconSettings, IconStop, IconX, IconTicket, IconChevronDown, IconStars } from './icons'
 
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
 
@@ -814,7 +814,7 @@ export function App() {
           {active ? (
             <div className="controls no-drag">
               <span className="ctl-icon">
-                <IconSparkle size={14} />
+                <IconStars size={14} />
               </span>
               <select className="ctl-mode" value={active.modeId} onChange={(e) => setMode(e.target.value)} title="Mode">
                 {modes.map((m) => (
@@ -1010,7 +1010,7 @@ export function App() {
                     <IconStop size={16} />
                   </button>
                 ) : (
-                  <button className="send" onClick={() => void send()} disabled={!draft.trim()} title="Send (Enter)" aria-label="Send">
+                  <button className={`send ${draft.trim() ? 'ready' : ''}`} onClick={() => void send()} disabled={!draft.trim()} title="Send (Enter)" aria-label="Send">
                     <IconArrowUp size={16} />
                   </button>
                 )}
