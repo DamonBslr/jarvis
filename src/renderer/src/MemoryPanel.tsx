@@ -46,7 +46,10 @@ function MemoryRow({ m, onChange }: { m: Memory; onChange: () => void }) {
               ))}
             </select>
             {' · '}
-            {m.source.startsWith('learned') ? 'learned' : m.source} · used {m.uses}× · {timeAgo(m.updatedAt)}
+            {m.source.startsWith('learned') ? 'learned' : m.source}
+            <span className="mem-usage">
+              used {m.uses}× · {timeAgo(m.updatedAt)}
+            </span>
           </span>
         </div>
       )}

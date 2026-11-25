@@ -5261,3 +5261,58 @@ kbd.on-primary {
 .composer .digest {
   border-radius: 0;
 }
+
+/* Round 11 (GPT) */
+.app.page-open .conv-item.active {
+  box-shadow: none;
+  font-weight: 400;
+}
+/* Workbench hierarchy */
+.wb-pr-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.wb-section {
+  font-size: 12px;
+  font-weight: 600;
+}
+.wb-files + .wb-section {
+  margin-top: 28px;
+}
+.wb-commit {
+  gap: 1px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+.wb-commit-meta {
+  font-size: 12px;
+}
+/* Digest: equal project columns, project tag right after each update */
+.digest-projects {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+.digest-loop .mem-meta {
+  margin-left: 8px;
+  margin-right: auto;
+}
+.digest-loop .digest-loop-title {
+  flex: 0 1 auto;
+}
+/* Memory: category and source left, usage right */
+.mem-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+.mem-usage {
+  margin-left: auto;
+  color: var(--faint);
+}
+/* Projects: tighter rail */
+.proj-body {
+  grid-template-columns: 160px 1fr;
+  gap: 24px;
+}
