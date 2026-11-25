@@ -5407,3 +5407,12 @@ kbd.on-primary {
 .wb-linear .wb-head {
   align-items: center;
 }
+
+/* Memory category picker: no clipped descenders, even spacing around the dot */
+.mem-meta .mem-type {
+  height: 18px;
+  line-height: 18px;
+  padding: 0 !important;
+  background-image: none;
+  margin-right: -4px;
+}
