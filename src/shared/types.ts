@@ -295,6 +295,8 @@ export interface Conversation {
   quick?: boolean
 }
 
+export type AppLanguage = 'en' | 'de'
+
 export interface Settings {
   /** Remove ANTHROPIC_API_KEY etc. so the CLI uses your Claude subscription login instead of API billing. */
   preferSubscription: boolean
@@ -320,8 +322,8 @@ export interface Settings {
   voiceHotkey: string
   /** whisper.cpp model name (ggml-<name>.bin). */
   voiceModel: string
-  /** Spoken language for transcription ('auto' detects). */
-  voiceLanguage: string
+  /** Jarvis's language: what it replies in, listens for and speaks. Only changes when the user switches it. */
+  language: AppLanguage
   /** Read answers aloud when the question was spoken. */
   speakReplies: boolean
   /** macOS `say` voice ('' = system default). Also the fallback when the neural voice can't speak a reply. */
@@ -330,6 +332,8 @@ export interface Settings {
   ttsEngine: 'neural' | 'system'
   /** Kokoro voice id, e.g. "bm_george" (prefix: a=US, b=UK English, e/f/i/p/j/z/h = other languages). */
   neuralVoice: string
+  /** Piper voice id for German replies, e.g. "de_DE-thorsten-high" (Kokoro has no German). */
+  germanVoice: string
   /** Speaking rate for the neural voice (1 = normal). */
   ttsSpeed: number
   /** Keep the mic open and react to "Jarvis …" (all transcription stays local). */
@@ -513,10 +517,12 @@ export interface VoiceStatus {
   voices: string[]
   /** Neural voice: uv runs the worker, model files live in userData/kokoro. */
   neural: { uv: boolean; downloaded: boolean; sizeMb: number }
+  /** German neural voices (Piper, userData/piper): ids already on disk. */
+  german: { downloaded: string[] }
 }
 
 export interface VoiceProgress {
-  task: 'model' | 'whisper' | 'neural'
+  task: 'model' | 'whisper' | 'neural' | 'german'
   step?: string
   progress?: number
   done?: boolean
@@ -605,6 +611,8 @@ export interface JarvisApi {
     installWhisper(): Promise<void>
     /** Download the neural voice (Kokoro) and install its runtime. */
     downloadNeural(): Promise<void>
+    /** Download a German Piper voice and install its runtime. */
+    downloadGermanVoice(id: string): Promise<void>
     onProgress(cb: (p: VoiceProgress) => void): () => void
     /** Wake word heard: text after "Jarvis". */
     wake(rest: string): Promise<void>

@@ -1,4 +1,5 @@
-// Local speech: whisper.cpp for speech-to-text, Kokoro (neural) or macOS `say` for replies. Nothing leaves the machine.
+// Local speech: whisper.cpp for speech-to-text; Kokoro (English) or Piper (German) neural voices, or macOS `say`,
+// for replies. Nothing leaves the machine.
 import { app, systemPreferences } from 'electron'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createWriteStream } from 'node:fs'
@@ -9,7 +10,8 @@ import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import type { Settings, VoiceProgress, VoiceStatus } from '@shared/types'
+import type { AppLanguage, Settings, VoiceProgress, VoiceStatus } from '@shared/types'
+import { DEFAULT_GERMAN_VOICE, GERMAN_VOICES, LANGUAGES, languageOf } from '@shared/language'
 import { runOnce } from './providers/spawn'
 import { loadShellEnv } from './shellEnv'
 
@@ -46,28 +48,43 @@ async function findWhisper(): Promise<string | null> {
   return null
 }
 
-let voicesCache: string[] | null = null
-async function listVoices(): Promise<string[]> {
+/** macOS voices with their locale ("Anna" -> "de_DE"). */
+let voicesCache: { name: string; locale: string }[] | null = null
+async function systemVoices(): Promise<{ name: string; locale: string }[]> {
   if (voicesCache) return voicesCache
   if (process.platform !== 'darwin') return []
   try {
     const out = await runOnce('say', ['-v', '?'], { timeoutMs: 5000 })
     voicesCache = out
       .split('\n')
-      .map((l) => l.match(/^(.+?)\s{2,}[a-z]{2}[_-]/i)?.[1]?.trim())
-      .filter((v): v is string => !!v)
+      .map((l) => l.match(/^(.+?)\s{2,}([a-z]{2}[_-][A-Za-z0-9]+)/i))
+      .filter((m): m is RegExpMatchArray => !!m)
+      .map((m) => ({ name: m[1].trim(), locale: m[2] }))
     return voicesCache
   } catch {
     return []
   }
 }
+const listVoices = async () => (await systemVoices()).map((v) => v.name)
+
+/** The user's macOS voice if it speaks `lang`, else the first installed voice that does. */
+async function systemVoiceFor(lang: AppLanguage, preferred: string): Promise<string> {
+  const voices = await systemVoices()
+  const speaks = (v: { locale: string }) => v.locale.toLowerCase().startsWith(lang)
+  const mine = voices.find((v) => v.name === preferred)
+  if (mine && speaks(mine)) return preferred
+  // '' = system default, which follows the macOS language; only guess when the user picked a foreign voice or none.
+  if (lang === 'en' && !preferred) return ''
+  return voices.find(speaks)?.name ?? preferred
+}
 
 export async function voiceStatus(settings: Settings): Promise<VoiceStatus> {
-  const [whisper, size, voices, neural] = await Promise.all([
+  const [whisper, size, voices, neural, german] = await Promise.all([
     findWhisper(),
     stat(modelPath(settings.voiceModel)).then((s) => s.size, () => 0),
     listVoices(),
-    neuralStatus()
+    neuralStatus(),
+    Promise.all(GERMAN_VOICES.map(async (v) => ((await piperDownloaded(v.id)) ? v.id : null)))
   ])
   const mic = process.platform === 'darwin' ? systemPreferences.getMediaAccessStatus('microphone') : 'granted'
   return {
@@ -75,7 +92,8 @@ export async function voiceStatus(settings: Settings): Promise<VoiceStatus> {
     model: { name: settings.voiceModel, downloaded: size > 1_000_000, sizeMb: VOICE_MODELS[settings.voiceModel] },
     micAccess: mic as VoiceStatus['micAccess'],
     voices,
-    neural
+    neural,
+    german: { downloaded: german.filter((v): v is string => !!v) }
   }
 }
 
@@ -151,7 +169,8 @@ export async function transcribe(wav: Uint8Array, settings: Settings): Promise<s
   const file = join(tmpdir(), `jarvis-${randomUUID()}.wav`)
   await writeFile(file, wav)
   try {
-    const lang = settings.voiceModel.endsWith('.en') ? 'en' : settings.voiceLanguage || 'auto'
+    // Pinned to Jarvis's language: "auto" on small models mis-detects accents and short clips.
+    const lang = settings.voiceModel.endsWith('.en') ? 'en' : LANGUAGES[languageOf(settings.language)].whisper
     // A short vocabulary prompt steers whisper toward the words Jarvis hears most.
     const vocab = 'Jarvis, pull request, PR, Linear, GitHub, commit, branch, merge, rebase, Claude, Codex, repo, ticket.'
     const out = await runOnce(bin, ['-m', model, '-f', file, '-l', lang, '-nt', '-np', '-t', '4', '--prompt', vocab], {
@@ -169,8 +188,9 @@ export async function transcribe(wav: Uint8Array, settings: Settings): Promise<s
   }
 }
 
-// ---- neural voice (Kokoro-82M, ONNX, on this Mac) ----------------------------------------
-// A long-lived Python worker (run by uv) turns text into WAV files; afplay plays them.
+// ---- neural voices (on this Mac) -----------------------------------------------------------
+// Kokoro-82M speaks English; Piper speaks German (Kokoro has none). Each runs as a long-lived Python
+// worker (run by uv) that turns text into WAV files; afplay plays them.
 
 const NEURAL_FILES = [
   { name: 'kokoro-v1.0.onnx', mb: 311 },
@@ -178,6 +198,19 @@ const NEURAL_FILES = [
 ]
 const NEURAL_URL = 'https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0'
 const neuralDir = () => join(app.getPath('userData'), 'kokoro')
+
+const PIPER_URL = 'https://huggingface.co/rhasspy/piper-voices/resolve/main'
+const piperDir = () => join(app.getPath('userData'), 'piper')
+const isGermanVoice = (id: string) => GERMAN_VOICES.some((v) => v.id === id)
+/** "de_DE-thorsten-high" -> de/de_DE/thorsten/high/de_DE-thorsten-high */
+function piperRemote(id: string) {
+  const [locale, speaker, quality] = id.split('-')
+  return `${PIPER_URL}/${locale.split('_')[0]}/${locale}/${speaker}/${quality}/${id}`
+}
+const piperDownloaded = async (id: string) =>
+  isGermanVoice(id) &&
+  (await stat(join(piperDir(), `${id}.onnx`)).then((s) => s.size > 1_000_000, () => false)) &&
+  (await stat(join(piperDir(), `${id}.onnx.json`)).then(() => true, () => false))
 
 async function findUv(): Promise<string | null> {
   const env = await loadShellEnv()
@@ -194,13 +227,28 @@ async function neuralStatus(): Promise<VoiceStatus['neural']> {
   return { uv: !!uv, downloaded, sizeMb: NEURAL_FILES.reduce((n, f) => n + f.mb, 0) }
 }
 
-async function runWorker(args: string[], timeoutMs: number) {
+async function runWorker(script: string, dir: string, args: string[], timeoutMs: number) {
   const uv = await findUv()
   if (!uv) throw new Error('uv is not installed (brew install uv)')
-  await runOnce(uv, ['run', '--script', '--quiet', resourcePath('kokoro-worker.py'), neuralDir(), ...args], {
+  await runOnce(uv, ['run', '--script', '--quiet', resourcePath(script), dir, ...args], {
     timeoutMs,
     env: await loadShellEnv()
   })
+}
+
+/** Stream `url` into `dest` (via .part), reporting bytes as they arrive. */
+async function fetchTo(url: string, dest: string, onBytes: (n: number) => void) {
+  const part = `${dest}.part`
+  try {
+    const res = await fetch(url)
+    if (!res.ok || !res.body) throw new Error(`Download failed: HTTP ${res.status}`)
+    const body = Readable.fromWeb(res.body as any)
+    body.on('data', (c: Buffer) => onBytes(c.length))
+    await pipeline(body, createWriteStream(part))
+    await rename(part, dest)
+  } finally {
+    await rm(part, { force: true })
+  }
 }
 
 /** Download the Kokoro model + voices, then let uv install the runtime once so the first reply is instant. */
@@ -215,31 +263,21 @@ export async function downloadNeural(onProgress: Progress) {
         doneMb += f.mb
         continue
       }
-      const part = `${dest}.part`
-      try {
-        const res = await fetch(`${NEURAL_URL}/${f.name}`)
-        if (!res.ok || !res.body) throw new Error(`Download failed: HTTP ${res.status}`)
-        let got = 0
-        let lastPct = -1
-        const body = Readable.fromWeb(res.body as any)
-        body.on('data', (c: Buffer) => {
-          got += c.length
-          const pct = Math.floor(((doneMb + got / 1e6) / total) * 100)
-          if (pct !== lastPct && pct < 100) {
-            lastPct = pct
-            onProgress({ task: 'neural', progress: pct / 100, step: 'Downloading voice model' })
-          }
-        })
-        await pipeline(body, createWriteStream(part))
-        await rename(part, dest)
-      } finally {
-        await rm(part, { force: true })
-      }
+      let got = 0
+      let lastPct = -1
+      await fetchTo(`${NEURAL_URL}/${f.name}`, dest, (n) => {
+        got += n
+        const pct = Math.floor(((doneMb + got / 1e6) / total) * 100)
+        if (pct !== lastPct && pct < 100) {
+          lastPct = pct
+          onProgress({ task: 'neural', progress: pct / 100, step: 'Downloading voice model' })
+        }
+      })
       doneMb += f.mb
     }
     onProgress({ task: 'neural', progress: 1, step: 'Installing speech runtime (one time)…' })
-    await runWorker(['--warmup'], 10 * 60_000)
-    neuralBrokenUntil = 0
+    await runWorker('kokoro-worker.py', neuralDir(), ['--warmup'], 10 * 60_000)
+    kokoro.reset()
     onProgress({ task: 'neural', done: true })
   } catch (err) {
     onProgress({ task: 'neural', error: err instanceof Error ? err.message : String(err) })
@@ -247,14 +285,33 @@ export async function downloadNeural(onProgress: Progress) {
   }
 }
 
-let neuralBrokenUntil = 0
-let neuralCheck: { at: number; ok: boolean } | null = null
-async function neuralAvailable(): Promise<boolean> {
-  if (Date.now() < neuralBrokenUntil) return false
-  if (neuralCheck && Date.now() - neuralCheck.at < 30_000) return neuralCheck.ok
-  const st = await neuralStatus()
-  neuralCheck = { at: Date.now(), ok: st.uv && st.downloaded }
-  return neuralCheck.ok
+/** Download a German Piper voice (model + config), then warm up its runtime once. */
+export async function downloadGermanVoice(id: string, onProgress: Progress) {
+  const voice = GERMAN_VOICES.find((v) => v.id === id)
+  if (!voice) throw new Error(`Unknown German voice ${id}`)
+  await mkdir(piperDir(), { recursive: true })
+  try {
+    if (!(await piperDownloaded(id))) {
+      let got = 0
+      let lastPct = -1
+      await fetchTo(`${piperRemote(id)}.onnx.json`, join(piperDir(), `${id}.onnx.json`), () => {})
+      await fetchTo(`${piperRemote(id)}.onnx`, join(piperDir(), `${id}.onnx`), (n) => {
+        got += n
+        const pct = Math.floor((got / 1e6 / voice.mb) * 100)
+        if (pct !== lastPct && pct < 100) {
+          lastPct = pct
+          onProgress({ task: 'german', progress: pct / 100, step: 'Downloading German voice' })
+        }
+      })
+    }
+    onProgress({ task: 'german', progress: 1, step: 'Installing speech runtime (one time)…' })
+    await runWorker('piper-worker.py', piperDir(), ['--warmup', id], 10 * 60_000)
+    piper.reset()
+    onProgress({ task: 'german', done: true })
+  } catch (err) {
+    onProgress({ task: 'german', error: err instanceof Error ? err.message : String(err) })
+    throw err
+  }
 }
 
 class NeuralWorker {
@@ -264,13 +321,36 @@ class NeuralWorker {
   private stderr = ''
   private idle: NodeJS.Timeout | null = null
   private startedAt = 0
+  private brokenUntil = 0
+  private check: { at: number; ok: boolean } | null = null
+
+  constructor(
+    private readonly script: string,
+    private readonly dir: () => string,
+    private readonly ready: () => Promise<boolean>
+  ) {}
+
+  /** Model files on disk, uv present, and the worker hasn't just crashed on start. Cached 30 s. */
+  async available(): Promise<boolean> {
+    if (Date.now() < this.brokenUntil) return false
+    if (this.check && Date.now() - this.check.at < 30_000) return this.check.ok
+    const ok = !!(await findUv()) && (await this.ready())
+    this.check = { at: Date.now(), ok }
+    return ok
+  }
+
+  /** After a fresh download: forget a failed start and re-check the files. */
+  reset() {
+    this.brokenUntil = 0
+    this.check = null
+  }
 
   private async ensure(): Promise<ChildProcess> {
     if (this.child) return this.child
     const uv = await findUv()
     if (!uv) throw new Error('uv not found')
     if (this.child) return this.child // another call started it while we looked for uv
-    const child = spawn(uv, ['run', '--script', '--quiet', resourcePath('kokoro-worker.py'), neuralDir()], {
+    const child = spawn(uv, ['run', '--script', '--quiet', resourcePath(this.script), this.dir()], {
       env: await loadShellEnv(),
       stdio: ['pipe', 'pipe', 'pipe']
     })
@@ -306,8 +386,8 @@ class NeuralWorker {
       this.waiting.clear()
       // Died on its own soon after starting: broken setup. Use the system voice for a while instead of retrying per sentence.
       if (code !== 0 && code !== null && Date.now() - this.startedAt < 20_000) {
-        neuralBrokenUntil = Date.now() + 60_000
-        console.warn('[tts] neural voice failed to start:', this.stderr.trim().split('\n').pop())
+        this.brokenUntil = Date.now() + 60_000
+        console.warn(`[tts] ${this.script} failed to start:`, this.stderr.trim().split('\n').pop())
       }
     }
     child.on('exit', gone)
@@ -317,7 +397,7 @@ class NeuralWorker {
 
   async synth(text: string, voice: string, speed: number): Promise<string | null> {
     if (this.idle) clearTimeout(this.idle)
-    // Idle workers hold ~400 MB; let them go after 10 quiet minutes.
+    // Idle workers hold a few hundred MB; let them go after 10 quiet minutes.
     this.idle = setTimeout(() => this.stop(), 10 * 60_000)
     let child: ChildProcess
     try {
@@ -350,9 +430,13 @@ class NeuralWorker {
     this.child?.kill('SIGTERM')
   }
 }
-const worker = new NeuralWorker()
+const kokoro = new NeuralWorker('kokoro-worker.py', neuralDir, neuralDownloaded)
+// One Piper worker serves every German voice; "ready" means the one picked in settings is on disk.
+let germanVoice = DEFAULT_GERMAN_VOICE
+const piper = new NeuralWorker('piper-worker.py', piperDir, () => piperDownloaded(germanVoice))
 
-// Kokoro can't speak German; with "auto" language a German answer goes to the system voice instead of an English accent.
+// Safety net: German text while Jarvis is set to English (e.g. the user asked for German in chat)
+// shouldn't be read with an English accent.
 const GERMAN = /\b(und|der|die|das|ist|nicht|ich|ein|eine|mit|für|auf|den|dem|du|sie|wir|auch|noch|bitte|kann|habe|hast|wird|sind)\b/gi
 function looksGerman(text: string) {
   const words = text.split(/\s+/).filter(Boolean).length
@@ -360,19 +444,22 @@ function looksGerman(text: string) {
   return words > 0 && hits / words > 0.12
 }
 
-const NEURAL_LANG: Record<string, string> = { a: 'en', b: 'en', e: 'es', f: 'fr', h: 'hi', i: 'it', j: 'ja', p: 'pt', z: 'zh' }
-
-type Engine = { kind: 'neural'; voice: string; speed: number; fallback: string } | { kind: 'system'; voice: string }
+type Engine =
+  | { kind: 'neural'; worker: NeuralWorker; voice: string; speed: number; fallback: string }
+  | { kind: 'system'; voice: string }
 
 async function pickEngine(text: string, settings: Settings): Promise<Engine> {
-  const system: Engine = { kind: 'system', voice: settings.ttsVoice }
-  if (settings.ttsEngine !== 'neural' || !(await neuralAvailable())) return system
-  const voice = settings.neuralVoice || 'bm_george'
-  const lang = NEURAL_LANG[voice[0]] ?? 'en'
-  const spoken = settings.voiceModel.endsWith('.en') ? 'en' : settings.voiceLanguage || 'auto'
-  if (spoken !== 'auto' && spoken !== lang) return system
-  if (lang === 'en' && looksGerman(text)) return system
-  return { kind: 'neural', voice, speed: Math.min(1.6, Math.max(0.6, settings.ttsSpeed || 1)), fallback: settings.ttsVoice }
+  const speed = Math.min(1.6, Math.max(0.6, settings.ttsSpeed || 1))
+  const lang: AppLanguage = languageOf(settings.language) === 'de' || looksGerman(text) ? 'de' : 'en'
+  const system: Engine = { kind: 'system', voice: await systemVoiceFor(lang, settings.ttsVoice) }
+  if (settings.ttsEngine !== 'neural') return system
+  if (lang === 'de') {
+    germanVoice = isGermanVoice(settings.germanVoice) ? settings.germanVoice : DEFAULT_GERMAN_VOICE
+    if (!(await piper.available())) return system
+    return { kind: 'neural', worker: piper, voice: germanVoice, speed, fallback: system.voice }
+  }
+  if (!(await kokoro.available())) return system
+  return { kind: 'neural', worker: kokoro, voice: settings.neuralVoice || 'bm_george', speed, fallback: system.voice }
 }
 
 // Spoken output is a queue so live mode can stream an answer sentence by sentence.
@@ -452,7 +539,8 @@ function pump() {
 
 export function stopSpeaking() {
   generation++
-  worker.cancel()
+  kokoro.cancel()
+  piper.cancel()
   for (const job of queue.splice(0)) {
     void job.wav?.then((f) => {
       if (f) void rm(f, { force: true })
@@ -475,7 +563,8 @@ export function stopSpeaking() {
 /** On quit: stop talking and shut the worker down. */
 export function shutdownSpeech() {
   stopSpeaking()
-  worker.stop()
+  kokoro.stop()
+  piper.stop()
 }
 
 /** Append to what's being said. Resolves when this chunk finished playing (or speech was stopped). */
@@ -488,7 +577,7 @@ export function say(text: string, settings: Settings): Promise<void> {
       const engine = await pickEngine(text, settings)
       if (gen !== generation) return resolve() // stopped while we were choosing
       const job: SayJob = { text, engine, done: resolve }
-      if (engine.kind === 'neural') job.wav = worker.synth(text, engine.voice, engine.speed)
+      if (engine.kind === 'neural') job.wav = engine.worker.synth(text, engine.voice, engine.speed)
       queue.push(job)
       pump()
     })
