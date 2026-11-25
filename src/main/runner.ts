@@ -13,6 +13,7 @@ import { learnFromTurn } from './memory/learn'
 import { bridgeLaunch, respondApproval } from './mcp/server'
 import { collectTools } from './tools'
 import { languageInstruction, languageOf } from '@shared/language'
+import { VOICE_REPLY_STYLE } from '@shared/chat'
 
 export const providers: Record<ProviderId, Provider> = {
   claude: claudeProvider,
@@ -106,7 +107,14 @@ export async function startRun(req: RunRequest, sink: RunSink, owner: WebContent
   }
 
   // Every turn, every provider: answer in the language the user picked, not one guessed from the input.
-  req = { ...req, context: [req.context, languageInstruction(languageOf(settings.language))].filter(Boolean).join('\n\n') }
+  // Spoken turns: answer the way people talk. In context (sent every turn) rather than the system prompt,
+  // which Codex only gets on a thread's first turn, so a typed chat that goes live still sounds spoken.
+  req = {
+    ...req,
+    context: [req.context, languageInstruction(languageOf(settings.language)), req.voice ? VOICE_REPLY_STYLE : '']
+      .filter(Boolean)
+      .join('\n\n')
+  }
 
   // Jarvis tools for the agent: memory + Linear always, approval popups for Claude when someone can answer.
   if (req.provider !== 'ollama') {

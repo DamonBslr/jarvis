@@ -8,7 +8,7 @@ import type {
   ProviderStatus,
   Settings
 } from '@shared/types'
-import { applyEvent, historyFor, messageText, speakable, uid } from '@shared/chat'
+import { applyEvent, finalText, historyFor, messageText, speakable, spokenPart, uid } from '@shared/chat'
 import { MessageView } from './MessageView'
 import { ApprovalDialog } from './ApprovalDialog'
 import { Mic, recordUtterance, startWakeListener, type Utterance } from './voice'
@@ -112,7 +112,8 @@ export function QuickBar() {
           // Read the finished answer aloud (state update above is async; read from the ref next tick).
           setTimeout(() => {
             const msg = convRef.current?.messages.find((m) => m.id === run.msgId)
-            const text = msg ? messageText(msg) : ''
+            // Only the answer after the last tool, and only the part meant to be heard (not the on-screen detail).
+            const text = msg ? spokenPart(finalText(msg)) : ''
             if (text) void api.voice.speak(speakable(text))
           }, 50)
         }
@@ -203,9 +204,8 @@ export function QuickBar() {
         cwd: c.cwd,
         sessionId: c.sessions[c.provider],
         model: c.model ?? (c.provider === 'ollama' ? status?.models?.[0] : undefined),
-        systemPrompt: [mode?.systemPrompt, spoken ? 'The user spoke this request; keep the answer short and conversational.' : '']
-          .filter(Boolean)
-          .join('\n\n') || undefined,
+        systemPrompt: mode?.systemPrompt || undefined,
+        voice: spoken || undefined,
         history: c.provider === 'ollama' ? history : undefined,
         autonomy: c.autonomy
       })

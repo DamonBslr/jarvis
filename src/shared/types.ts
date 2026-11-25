@@ -27,6 +27,8 @@ export interface RunRequest {
   model?: string
   /** Extra instructions from the active mode (e.g. Code & Git). */
   systemPrompt?: string
+  /** The user spoke this turn and hears the answer: main pins the spoken reply style into it. */
+  voice?: boolean
   /** Full history; used by stateless providers (Ollama). */
   history?: { role: 'user' | 'assistant'; content: string }[]
   /** Autonomy level. 'ask' = read-only / plan, 'edit' = may edit files in cwd, 'full' = no sandbox. */
@@ -297,6 +299,17 @@ export interface Conversation {
 
 export type AppLanguage = 'en' | 'de'
 
+export type LiveAddressing = 'smart' | 'name' | 'all'
+
+export interface AddressedRequest {
+  /** What was heard. */
+  text: string
+  /** What Jarvis said last (spoken part), for follow-ups like "yes, do that". */
+  lastReply?: string
+  /** Milliseconds since Jarvis last finished speaking; null if it hasn't spoken. */
+  sinceReplyMs?: number | null
+}
+
 export interface Settings {
   /** Remove ANTHROPIC_API_KEY etc. so the CLI uses your Claude subscription login instead of API billing. */
   preferSubscription: boolean
@@ -342,6 +355,11 @@ export interface Settings {
   liveHotkey: string
   /** Live mode: talking over Jarvis interrupts it (needs headphones, or it hears itself). */
   liveBargeIn: boolean
+  /**
+   * Live mode: which speech counts as talking to Jarvis. 'smart' = a local classifier tells requests from
+   * side conversations; 'name' = only when you say "Jarvis" (or right after it spoke); 'all' = everything.
+   */
+  liveAddressing: LiveAddressing
   /** Hide the Dock icon; Jarvis lives in the menu bar. */
   menuBarOnly: boolean
   /** Download and install updates automatically (packaged app only). */
@@ -614,6 +632,11 @@ export interface JarvisApi {
     /** Download a German Piper voice and install its runtime. */
     downloadGermanVoice(id: string): Promise<void>
     onProgress(cb: (p: VoiceProgress) => void): () => void
+    /**
+     * Live mode: probability (0–1) that an utterance is meant for Jarvis rather than people in the room.
+     * null when no local classifier (Jev, Ollama) is reachable.
+     */
+    addressed(req: AddressedRequest): Promise<number | null>
     /** Wake word heard: text after "Jarvis". */
     wake(rest: string): Promise<void>
     /** The main window reports live mode on/off (pauses the wake word, updates the tray). */

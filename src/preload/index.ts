@@ -76,6 +76,7 @@ const api: JarvisApi = {
     downloadNeural: () => ipcRenderer.invoke('voice:downloadNeural'),
     downloadGermanVoice: (id) => ipcRenderer.invoke('voice:downloadGermanVoice', id),
     onProgress: (cb) => subscribe<[VoiceProgress]>('jarvis:voice-progress', cb),
+    addressed: (req) => ipcRenderer.invoke('voice:addressed', req),
     wake: (rest) => ipcRenderer.invoke('voice:wake', rest),
     setLive: (on) => ipcRenderer.invoke('voice:setLive', on),
     onLive: (cb) => subscribe<[boolean]>('jarvis:live', cb),

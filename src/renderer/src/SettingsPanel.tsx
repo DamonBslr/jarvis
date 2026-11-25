@@ -312,6 +312,25 @@ function VoiceTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
         </div>
       </label>
 
+      <label className="row">
+        <span>Live mode: answer when</span>
+        <div>
+          <select
+            value={s.liveAddressing}
+            onChange={(e) => setS({ ...s, liveAddressing: e.target.value as Settings['liveAddressing'] })}
+          >
+            <option value="smart">I'm talking to Jarvis (ignore side conversations)</option>
+            <option value="name">I say “Jarvis”</option>
+            <option value="all">I say anything</option>
+          </select>
+          <small>
+            Smart uses a local model (Jev, else your smallest Ollama model) to tell requests from talk with people
+            around you; without one it behaves like “I say Jarvis”. Right after Jarvis speaks, you can reply without its
+            name.
+          </small>
+        </div>
+      </label>
+
       <label className="row check">
         <input type="checkbox" checked={s.liveBargeIn} onChange={(e) => setS({ ...s, liveBargeIn: e.target.checked })} />
         <div>

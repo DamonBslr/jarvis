@@ -1321,6 +1321,13 @@ input[type='range'] {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.live-heard.ignored {
+  opacity: 0.6;
+  font-style: italic;
+}
+.live-skip {
+  font-style: normal;
+}
 .live-end {
   min-height: 32px;
   border: 1px solid rgba(238, 128, 128, 0.3);

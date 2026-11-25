@@ -1,11 +1,12 @@
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, session, shell, type WebContents } from 'electron'
 import { stat, writeFile } from 'node:fs/promises'
-import type { AgentEvent, ProviderId, Routine, RunRequest, Settings } from '@shared/types'
+import type { AddressedRequest, AgentEvent, ProviderId, Routine, RunRequest, Settings } from '@shared/types'
 import { loadShellEnv } from './shellEnv'
 import * as store from './store'
 import { MODES } from './modes'
 import { route } from './classify/router'
 import { jevHealth } from './classify/jev'
+import { addressedProbability } from './classify/addressed'
 import { probeEmbeddings } from './memory/embed'
 import * as mem from './memory/memories'
 import * as kb from './memory/knowledge'
@@ -316,6 +317,9 @@ function registerIpc() {
   ipcMain.handle('voice:downloadNeural', () => voice.downloadNeural(voiceProgress))
   ipcMain.handle('voice:downloadGermanVoice', (_e, id: string) => voice.downloadGermanVoice(id, voiceProgress))
   ipcMain.handle('voice:say', async (_e, text: string) => voice.say(text, await store.getSettings()))
+  ipcMain.handle('voice:addressed', async (_e, req: AddressedRequest) =>
+    addressedProbability(req, await store.getSettings())
+  )
   ipcMain.handle('voice:wake', (_e, rest: string) => {
     if (LIVE_PHRASE.test(rest.trim())) return toggleLive(true)
     showQuick({ voice: !rest.trim(), prompt: rest.trim() || undefined })

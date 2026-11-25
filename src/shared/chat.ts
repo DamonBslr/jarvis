@@ -53,6 +53,44 @@ export function historyFor(conv: Conversation) {
   return conv.messages.map((m) => ({ role: m.role, content: messageText(m) })).filter((m) => m.content.trim())
 }
 
+/** The answer after the last tool call: what's worth saying, without the "let me check…" narration in between. */
+export function finalText(m: ChatMessage): string {
+  const i = m.parts.findLastIndex((p) => p.type === 'tool')
+  return m.parts
+    .slice(i + 1)
+    .filter((p) => p.type === 'text')
+    .map((p) => (p as { text: string }).text)
+    .join('')
+}
+
+/**
+ * Pinned into every turn the user spoke (live mode, spoken quick-bar requests). Written answers read
+ * aloud sound like someone reciting a document; this asks for something a person would actually say.
+ */
+export const VOICE_REPLY_STYLE = [
+  'Voice reply: the user spoke this request and your answer is read aloud by text-to-speech. Talk the way a sharp assistant would on the phone, not the way you would write.',
+  '- One to three short sentences, about 40 words, never more than 60. Lead with the answer; no preamble ("Sure!", "Great question"), no restating the question, no sign-off.',
+  '- Plain spoken words only: no markdown, bullet points, headings, tables, emoji, URLs or file paths. Say "the settings file", not "src/main/store.ts". Round numbers and say them the way people do ("about two hundred", "half past three").',
+  '- Give the gist instead of reading out lists or details ("Three checks failed, mostly lint") and offer more ("Want me to go through them?"). At most one question.',
+  '- Contractions and a relaxed, friendly tone are good.',
+  '- If on-screen detail really helps (code, commands, a long list, links), put it after a line containing only --- . Everything after that line is shown, not spoken, so the spoken part must stand on its own.',
+  '- Before work with tools, say one short sentence about what you are doing ("Checking your calendar."), then stay quiet until you have the answer. Do not narrate each step.'
+].join('\n')
+
+/** Where on-screen detail starts in a voice reply: a `---` line, a code block, heading or table. -1 if none. */
+export function detailStart(md: string, lists = false): number {
+  const rx = lists
+    ? /^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$|^[ \t]*```|^#{1,6}[ \t]|^[ \t]*\||^[ \t]*(?:[-*•]|\d+[.)])[ \t]+\S/m
+    : /^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$|^[ \t]*```|^#{1,6}[ \t]|^[ \t]*\|/m
+  return rx.exec(md)?.index ?? -1
+}
+
+/** The part of a voice reply meant to be heard (everything when the model didn't separate it). */
+export function spokenPart(md: string): string {
+  const cut = detailStart(md)
+  return (cut > 0 && md.slice(0, cut).trim()) || md
+}
+
 /** Markdown -> something worth reading aloud: no code, links, tables or emphasis marks. */
 export function speakable(md: string, max = 700): string {
   const text = md

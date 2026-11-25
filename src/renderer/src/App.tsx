@@ -3,6 +3,7 @@ import type {
   ApprovalDecision,
   ApprovalRequest,
   LinearIssue,
+  LiveAddressing,
   ChatMessage,
   Conversation,
   Mode,
@@ -22,7 +23,7 @@ import { Onboarding } from './Onboarding'
 import { HomeDigest } from './HomeDigest'
 import { applyEvent, historyFor, uid } from '@shared/chat'
 import { Mic, recordUtterance, type Utterance } from './voice'
-import { LIVE_SYSTEM_PROMPT, LiveLoop, type LivePhase } from './live'
+import { LiveLoop, type LivePhase } from './live'
 import { IconArrowUp, IconBrain, IconClock, IconCompose, IconFolder, IconLayers, IconPanelRight, IconSettings, IconStop, IconX, IconTicket, IconChevronDown, IconStars } from './icons'
 
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
@@ -96,9 +97,15 @@ function greeting(name?: string) {
 const PHASE_LABEL: Record<LivePhase, string> = {
   listening: 'Listening…',
   hearing: 'Hearing you…',
-  transcribing: 'Transcribing…',
+  transcribing: 'Got it…',
   thinking: 'Working on it…',
   speaking: 'Speaking…'
+}
+
+const LIVE_HINT: Record<LiveAddressing, string> = {
+  smart: 'Just talk; side conversations are ignored. Say “Jarvis” if I miss you. Esc ends.',
+  name: 'Start with “Jarvis…”; everything else is ignored. Esc ends.',
+  all: 'Just talk. Say “stop live mode” or press Esc to end.'
 }
 
 const errText = (err: unknown) =>
@@ -155,7 +162,7 @@ export function App() {
   const [dismissedPr, setDismissedPr] = useState<Set<string>>(new Set())
   const [linking, setLinking] = useState(false)
   const alwaysAllow = useRef(new Map<string, Set<string>>()) // convId -> tool names
-  const [live, setLive] = useState<{ phase: LivePhase; convId: string; heard?: string } | null>(null)
+  const [live, setLive] = useState<{ phase: LivePhase; convId: string; heard?: string; ignored?: boolean } | null>(null)
   const [dictation, setDictation] = useState<'idle' | 'listening' | 'transcribing'>('idle')
   const [level, setLevel] = useState(0)
   const [voiceNote, setVoiceNote] = useState<string | null>(null)
@@ -439,7 +446,8 @@ export function App() {
       cwd: conv.cwd,
       sessionId: conv.sessions[provider],
       model: effectiveModel,
-      systemPrompt: [mode?.systemPrompt, opts.live ? LIVE_SYSTEM_PROMPT : ''].filter(Boolean).join('\n\n') || undefined,
+      systemPrompt: mode?.systemPrompt || undefined,
+      voice: opts.live || undefined,
       history: provider === 'ollama' ? historyFor(conv) : undefined,
       autonomy: conv.autonomy
     })
@@ -519,6 +527,9 @@ export function App() {
       liveRef.current = await LiveLoop.start(
         {
           transcribe: (wav) => api.voice.transcribe(wav),
+          addressed: (text, lastReply, sinceReplyMs) => api.voice.addressed({ text, lastReply, sinceReplyMs }),
+          addressing: () => settingsRef.current?.liveAddressing ?? 'smart',
+          language: () => settingsRef.current?.language ?? 'en',
           send: (text, runId) => {
             const c = convsRef.current.find((x) => x.id === convId)
             if (!c || runsRef.current[c.id]) return false
@@ -532,7 +543,7 @@ export function App() {
           bargeIn: () => !!settingsRef.current?.liveBargeIn,
           onPhase: (phase) => setLive((l) => l && { ...l, phase }),
           onLevel: setLevel,
-          onHeard: (heard) => setLive((l) => l && { ...l, heard }),
+          onHeard: (heard, ignored) => setLive((l) => l && { ...l, heard, ignored }),
           onError: (msg) => setVoiceNote(errText(msg)),
           onEnd: (reason) => {
             liveRef.current = null
@@ -541,8 +552,7 @@ export function App() {
             void api.voice.setLive(false)
             if (reason) setVoiceNote(reason)
           }
-        },
-        'Listening.'
+        }
       )
       void api.voice.setLive(true)
     } catch (err) {
@@ -951,8 +961,14 @@ export function App() {
                       </button>
                     )}
                   </div>
-                  <div className="live-heard">
-                    {live.heard ? `“${live.heard}”` : 'Just talk. Say “stop live mode” or press Esc to end.'}
+                  <div className={`live-heard${live.ignored ? ' ignored' : ''}`} title={live.ignored ? 'Sounded like it was meant for someone else' : undefined}>
+                    {live.heard ? (
+                      <>
+                        “{live.heard}”{live.ignored && <span className="live-skip"> · not for me</span>}
+                      </>
+                    ) : (
+                      LIVE_HINT[settings?.liveAddressing ?? 'smart']
+                    )}
                   </div>
                 </div>
                 {(live.phase === 'thinking' || live.phase === 'speaking') && (

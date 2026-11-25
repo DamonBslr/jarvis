@@ -34,6 +34,7 @@ export const DEFAULT_SETTINGS: Settings = {
   wakeWord: false,
   liveHotkey: 'Alt+Shift+L',
   liveBargeIn: false,
+  liveAddressing: 'smart',
   menuBarOnly: false,
   autoUpdate: true,
   computerUse: false,
