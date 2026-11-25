@@ -69,6 +69,7 @@ const api: JarvisApi = {
     transcribe: (wav) => ipcRenderer.invoke('voice:transcribe', wav),
     speak: (t) => ipcRenderer.invoke('voice:speak', t),
     say: (t) => ipcRenderer.invoke('voice:say', t),
+    render: (t) => ipcRenderer.invoke('voice:render', t),
     stopSpeaking: () => ipcRenderer.invoke('voice:stopSpeaking'),
     onSpeaking: (cb) => subscribe<[boolean]>('jarvis:speaking', cb),
     downloadModel: (name) => ipcRenderer.invoke('voice:downloadModel', name),

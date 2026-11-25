@@ -317,6 +317,7 @@ function registerIpc() {
   ipcMain.handle('voice:downloadNeural', () => voice.downloadNeural(voiceProgress))
   ipcMain.handle('voice:downloadGermanVoice', (_e, id: string) => voice.downloadGermanVoice(id, voiceProgress))
   ipcMain.handle('voice:say', async (_e, text: string) => voice.say(text, await store.getSettings()))
+  ipcMain.handle('voice:render', async (_e, text: string) => voice.render(text, await store.getSettings()))
   ipcMain.handle('voice:addressed', async (_e, req: AddressedRequest) =>
     addressedProbability(req, await store.getSettings())
   )

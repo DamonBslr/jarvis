@@ -1,8 +1,10 @@
 // Live mode: a hands-free conversation loop.
 //   listen (VAD) -> transcribe locally -> decide whether it was meant for Jarvis -> send as a turn ->
 //   speak the answer sentence by sentence while it streams -> listen again.
-// The mic stays open for the whole session but frames are ignored while Jarvis talks (it would hear
-// itself through the speakers), unless barge-in is on (headphones), where talking over it interrupts.
+// The mic stays open for the whole session but frames are ignored while Jarvis talks, unless barge-in
+// is on. Then Jarvis's voice is played in the window (so echo cancellation removes it from the mic),
+// the barge bar sits above whatever still leaks through, and a transcript that's just its own words
+// coming back is ignored and the answer picks up where it was cut.
 //
 // Two things keep it from talking over people:
 // - End of turn isn't just "0.9 s of quiet". Speech is cut into segments that are transcribed while
@@ -60,6 +62,25 @@ const EXPLICIT_EXIT = /\b(?:live|listening|jarvis)\b/i
 
 export const isExitPhrase = (text: string) => EXIT.test(text.trim())
 
+const words = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s']/gu, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 2)
+
+/** Mostly words Jarvis was just saying: the mic picked up its own voice, not the user. */
+export function isEcho(heard: string, jarvisSaid: string): boolean {
+  const h = words(heard)
+  if (!h.length) return true // "uh", "mm": nothing worth stopping for
+  const said = new Set(words(jarvisSaid))
+  return h.filter((w) => said.has(w)).length / h.length >= 0.5
+}
+
+const STOP = /\b(?:stop|wait|hold on|hang on|pause|enough|quiet|shush|halt|stopp|warte|halt stopp|ruhe)\b/i
+/** A short "stop" / "wait" / "warte": cut the answer, no new request. */
+export const isStopWord = (text: string) => text.trim().split(/\s+/).length <= 4 && STOP.test(text)
+
 /** Whisper's usual spellings of the name. */
 const NAME = /\b(?:jarvis|jervis|javis|jarvas|dschawis)\b/i
 export const saysName = (text: string) => NAME.test(text)
@@ -86,7 +107,7 @@ export function soundsUnfinished(text: string): boolean {
 
 const PHRASES = {
   en: {
-    greeting: 'Listening.',
+    checking: 'One moment, let me check.',
     okay: 'Okay.',
     busy: "I'm still busy with the last request.",
     error: 'That ran into an error; details are on screen.',
@@ -96,7 +117,7 @@ const PHRASES = {
     to: 'to'
   },
   de: {
-    greeting: 'Ich höre.',
+    checking: 'Moment, ich schaue nach.',
     okay: 'Okay.',
     busy: 'Ich bin noch mit der letzten Anfrage beschäftigt.',
     error: 'Da ist ein Fehler aufgetreten, Details stehen auf dem Bildschirm.',
@@ -113,12 +134,12 @@ interface Turn {
   runId: string
   chunker: SpeechChunker
   done: boolean
-  /** A tool ran: later text is narration until the run ends, then the last block is the answer. */
-  tools: boolean
-  /** Text since the last tool call (only the final block gets spoken). */
-  held: string
+  /** Something was said for this turn (the model's "let me check", or ours). */
+  said: boolean
   /** Talked over (barge-in): stay quiet until we know whether that was for Jarvis. */
   muted: boolean
+  /** Sentences cut off or held back while muted; said after all if it wasn't for Jarvis. */
+  cut: string[]
 }
 
 /** Transcripts of the segments in the turn being heard, in order. */
@@ -147,6 +168,13 @@ export class LiveLoop {
   /** What Jarvis said last and when it finished, for follow-ups ("yes, do that"). */
   private lastReply = ''
   private repliedAt = 0
+  /** Sentences queued or playing for the current turn (what a barge-in cuts off). */
+  private inflight: { text: string }[] = []
+  /** Typical mic level while Jarvis talks: its own voice leaking back from the speakers. */
+  private echo = 0.01
+  private speakingSince = 0
+  /** The turn being heard started by talking over Jarvis; what Jarvis was saying at that moment. */
+  private barge: { jarvis: string } | null = null
   private ended = false
   private offEvents: () => void
 
@@ -161,7 +189,9 @@ export class LiveLoop {
   static async start(hooks: LiveHooks): Promise<LiveLoop> {
     const loop = new LiveLoop(await Mic.open(), hooks)
     hooks.onPhase('listening')
-    loop.speak(loop.phrases.greeting)
+    // No spoken greeting (it talks over you); the orb shows it's listening. The first thing said
+    // counts as addressed to Jarvis, like a reply.
+    loop.repliedAt = performance.now()
     return loop
   }
 
@@ -179,6 +209,7 @@ export class LiveLoop {
     this.dropTurn()
     this.seg = null
     this.pending = null
+    this.barge = null
     this.listenAgain(150)
   }
 
@@ -279,19 +310,37 @@ export class LiveLoop {
     void this.commit(text, pend.startedAt)
   }
 
-  /** Talking over Jarvis. Louder bar while it speaks, since its own voice leaks in without headphones. */
+  /**
+   * Talking over Jarvis. While it speaks, the bar sits well above how loud its own voice comes back
+   * through the mic (learned while it talks), so it doesn't interrupt itself; echo cancellation does
+   * most of the work, this catches what leaks through.
+   */
   private bargeFrame(rms: number) {
     const speaking = this.phase === 'speaking'
-    const bar = Math.max(speaking ? 0.045 : 0.02, this.vad.floor * (speaking ? 8 : 4))
-    this.loud = rms > bar ? this.loud + 1 : 0
-    if (this.loud < 4) return // ~half a second of voice, not a door or a cough
-    this.loud = 0
-    if (this.hooks.addressing() === 'all') this.dropTurn()
-    else {
-      // Might be someone else in the room: go quiet, but keep the run until we know it was for Jarvis.
-      this.hooks.stopSpeaking()
-      if (this.turn) this.turn.muted = true
+    if (speaking && performance.now() - this.speakingSince < 600) {
+      this.echo = this.echo * 0.8 + rms * 0.2 // learning the leak level; too early to tell
+      return
     }
+    const bar = speaking
+      ? Math.max(0.045, this.vad.floor * 8, this.echo * 3)
+      : Math.max(0.02, this.vad.floor * 4)
+    if (rms > bar) this.loud++
+    else {
+      this.loud = 0
+      if (speaking) this.echo = this.echo * 0.9 + rms * 0.1
+    }
+    if (this.loud < (speaking ? 5 : 4)) return // over half a second of voice, not a door or a cough
+    this.loud = 0
+    // Could be Jarvis's own voice, or someone else in the room: go quiet, but keep the run (and the
+    // sentences it was saying) until the transcript says it was really the user talking to Jarvis.
+    const t = this.turn
+    const cut = this.inflight.splice(0).map((e) => e.text)
+    this.barge = { jarvis: `${this.lastReply} ${cut.join(' ')}` }
+    if (t) {
+      t.muted = true
+      t.cut = cut
+    }
+    this.hooks.stopSpeaking()
     this.seg = [...this.ring]
     this.speechFrames = 3
     this.silentMs = 0
@@ -304,9 +353,22 @@ export class LiveLoop {
 
   private async commit(text: string, startedAt: number) {
     this.setPhase('transcribing')
+    const barge = this.barge
+    this.barge = null
+    if (barge) {
+      // Its own voice coming back through the mic: carry on as if nothing happened.
+      if (isEcho(text, barge.jarvis)) return this.resume()
+      // "Stop", "wait", "hang on": just stop talking and listen.
+      if (isStopWord(text)) {
+        this.hooks.onHeard(text)
+        this.dropTurn()
+        return this.listenAgain(0)
+      }
+    }
     this.hooks.onHeard(text)
     const mode = this.hooks.addressing()
-    const followUp = this.repliedAt > 0 && startedAt - this.repliedAt < FOLLOW_UP_MS
+    // Talking over an answer isn't replying to it: that needs the name or the classifier.
+    const followUp = !barge && this.repliedAt > 0 && startedAt - this.repliedAt < FOLLOW_UP_MS
     if (isExitPhrase(text) && (mode === 'all' || followUp || EXPLICIT_EXIT.test(text))) {
       this.ended = true // stop listening now; finish the goodbye, then close
       this.hooks.onLevel(0)
@@ -326,7 +388,7 @@ export class LiveLoop {
     this.dropTurn()
     this.idleMs = 0
     const runId = uid()
-    const turn: Turn = { runId, done: false, tools: false, held: '', muted: false, chunker: this.chunker() }
+    const turn: Turn = { runId, done: false, said: false, muted: false, cut: [], chunker: this.chunker() }
     this.turn = turn
     this.lastReply = ''
     this.setPhase('thinking')
@@ -351,15 +413,22 @@ export class LiveLoop {
     return p >= (followUp ? 0.3 : 0.5)
   }
 
-  /** Not for Jarvis: carry on with whatever it was doing before. */
+  /** Not for Jarvis: carry on with whatever it was doing, starting again from the sentence that was cut off. */
   private resume() {
+    this.barge = null
     const t = this.turn
-    if (!t) return this.listenAgain(0)
-    t.muted = false
-    if (t.done) {
-      this.turn = null
-      this.listenAgain(0)
-    } else this.setPhase('thinking')
+    if (t?.muted) {
+      t.muted = false
+      const cut = t.cut.splice(0)
+      if (cut.length) {
+        this.setPhase('speaking')
+        for (const text of cut) this.speakTurn(text)
+        return
+      }
+    }
+    if (t && !t.done) return this.setPhase('thinking')
+    this.turn = null
+    this.listenAgain(0)
   }
 
   private chunker(): SpeechChunker {
@@ -369,21 +438,14 @@ export class LiveLoop {
   private event(runId: string, ev: AgentEvent) {
     const t = this.turn
     if (!t || t.runId !== runId || this.ended) return
-    if (ev.kind === 'text') {
-      if (t.tools) t.held += ev.delta
-      else t.chunker.push(ev.delta)
-    } else if (ev.kind === 'tool_start') {
-      // The first "Let me check" is said before the tool runs; narration between later tools isn't.
-      if (!t.tools) t.chunker.flush()
-      t.tools = true
-      t.held = ''
+    if (ev.kind === 'text') t.chunker.push(ev.delta)
+    else if (ev.kind === 'tool_start') {
+      // Say what's pending before the tool runs ("Let me look that up"); if the model said nothing, say it for it.
+      t.chunker.flush()
+      if (!t.said) this.speakTurn(this.phrases.checking)
+      t.chunker = this.chunker() // what comes after the tool gets its own budget and detail cut-off
     } else if (ev.kind === 'error') t.chunker.note(this.phrases.error)
     else if (ev.kind === 'done') {
-      if (t.tools) {
-        t.chunker = this.chunker() // fresh budget for the actual answer
-        t.chunker.push(t.held)
-        t.held = ''
-      }
       t.chunker.flush()
       t.done = true
       this.settle()
@@ -398,15 +460,20 @@ export class LiveLoop {
   }
 
   private speakTurn(text: string) {
-    if (this.turn?.muted) return
+    const t = this.turn
+    if (t) t.said = true
+    if (t?.muted) return void t.cut.push(text)
     this.lastReply = `${this.lastReply} ${text}`.trim().slice(-600)
-    this.speak(text)
+    const entry = { text }
+    this.inflight.push(entry)
+    this.speak(text, () => (this.inflight = this.inflight.filter((e) => e !== entry)))
   }
 
-  private speak(text: string) {
+  private speak(text: string, after?: () => void) {
     this.outstanding++
     if (this.phase !== 'hearing' && this.phase !== 'transcribing') this.setPhase('speaking')
     void this.hooks.say(text).finally(() => {
+      after?.()
       this.outstanding--
       this.repliedAt = performance.now()
       this.settle()
@@ -433,6 +500,7 @@ export class LiveLoop {
 
   private setPhase(p: LivePhase) {
     if (this.phase === p) return
+    if (p === 'speaking') this.speakingSince = performance.now()
     this.phase = p
     this.hooks.onPhase(p)
   }

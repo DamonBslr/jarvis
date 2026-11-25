@@ -336,8 +336,9 @@ function VoiceTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
         <div>
           <div>Live mode: interrupt by talking</div>
           <small>
-            Talking over Jarvis stops its answer and cancels the run. Use headphones — through speakers Jarvis hears
-            itself. When off, press Esc or Interrupt instead; the mic is ignored while Jarvis speaks.
+            Talk over Jarvis to cut in. Its own voice is filtered out of the mic, so speakers work; headphones are
+            still the most reliable. Say “stop” or “wait” to just stop it, or “Jarvis, …” to ask something new.
+            When off, press Esc or Interrupt instead; the mic is ignored while Jarvis speaks.
           </small>
         </div>
       </label>

@@ -623,6 +623,8 @@ export interface JarvisApi {
     speak(text: string): Promise<void>
     /** Queue after what's being said; resolves when this chunk has played (or speech was stopped). */
     say(text: string): Promise<void>
+    /** Synthesize speech without playing it (WAV bytes, null on failure); live mode plays it in the window. */
+    render(text: string): Promise<Uint8Array | null>
     stopSpeaking(): Promise<void>
     onSpeaking(cb: (on: boolean) => void): () => void
     downloadModel(name: string): Promise<void>

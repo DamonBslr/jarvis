@@ -24,6 +24,7 @@ import { HomeDigest } from './HomeDigest'
 import { applyEvent, historyFor, uid } from '@shared/chat'
 import { Mic, recordUtterance, type Utterance } from './voice'
 import { LiveLoop, type LivePhase } from './live'
+import { Speaker } from './speaker'
 import { IconArrowUp, IconBrain, IconClock, IconCompose, IconFolder, IconLayers, IconPanelRight, IconSettings, IconStop, IconX, IconTicket, IconChevronDown, IconStars } from './icons'
 
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
@@ -524,6 +525,8 @@ export function App() {
       setActiveId(convId)
       void api.voice.stopSpeaking()
       setLive({ phase: 'listening', convId })
+      // Played in this window (not afplay) so the mic's echo cancellation can hear and remove it.
+      const speaker = new Speaker((t) => api.voice.render(t))
       liveRef.current = await LiveLoop.start(
         {
           transcribe: (wav) => api.voice.transcribe(wav),
@@ -538,14 +541,18 @@ export function App() {
           },
           cancel: (runId) => void api.cancel(runId),
           onEvent: api.onEvent,
-          say: (t) => api.voice.say(t),
-          stopSpeaking: () => void api.voice.stopSpeaking(),
+          say: (t) => speaker.say(t),
+          stopSpeaking: () => {
+            speaker.stop()
+            void api.voice.stopSpeaking() // also drops sentences still rendering
+          },
           bargeIn: () => !!settingsRef.current?.liveBargeIn,
           onPhase: (phase) => setLive((l) => l && { ...l, phase }),
           onLevel: setLevel,
           onHeard: (heard, ignored) => setLive((l) => l && { ...l, heard, ignored }),
           onError: (msg) => setVoiceNote(errText(msg)),
           onEnd: (reason) => {
+            speaker.close()
             liveRef.current = null
             setLive(null)
             setLevel(0)
@@ -795,18 +802,40 @@ export function App() {
           ))}
         </nav>
         <div className="sidebar-foot">
-          <button className={`nav-item ${showProjects ? 'active' : ''}`} onClick={() => openPage('projects')}>
-            <IconLayers size={15} /> Projects
-          </button>
-          <button className={`nav-item ${showMemory ? 'active' : ''}`} onClick={() => openPage('memory')}>
-            <IconBrain size={15} /> Memory
-          </button>
-          <button className={`nav-item ${showRoutines ? 'active' : ''}`} onClick={() => openPage('routines')}>
-            <IconClock size={15} /> Routines
-          </button>
-          <button className="nav-item" onClick={() => setShowSettings(true)}>
-            <IconSettings size={15} /> Settings
-          </button>
+          <div className="nav-row">
+            <button
+              className={`nav-item icon-only ${showProjects ? 'active' : ''}`}
+              onClick={() => openPage('projects')}
+              title="Projects"
+              aria-label="Projects"
+            >
+              <IconLayers size={16} />
+            </button>
+            <button
+              className={`nav-item icon-only ${showMemory ? 'active' : ''}`}
+              onClick={() => openPage('memory')}
+              title="Memory"
+              aria-label="Memory"
+            >
+              <IconBrain size={16} />
+            </button>
+            <button
+              className={`nav-item icon-only ${showRoutines ? 'active' : ''}`}
+              onClick={() => openPage('routines')}
+              title="Routines"
+              aria-label="Routines"
+            >
+              <IconClock size={16} />
+            </button>
+            <button
+              className={`nav-item icon-only ${showSettings ? 'active' : ''}`}
+              onClick={() => setShowSettings(true)}
+              title="Settings"
+              aria-label="Settings"
+            >
+              <IconSettings size={16} />
+            </button>
+          </div>
           <div className="provider-health" onClick={refreshProviders} title="Engines · click to re-check">
             {providers.map((p) => (
               <span key={p.id} className="health-row" title={p.detail ?? p.version ?? ''}>

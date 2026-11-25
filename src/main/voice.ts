@@ -3,7 +3,7 @@
 import { app, systemPreferences } from 'electron'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createWriteStream } from 'node:fs'
-import { access, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -582,6 +582,39 @@ export function say(text: string, settings: Settings): Promise<void> {
       pump()
     })
   })
+}
+
+/**
+ * Synthesize without playing: WAV bytes for the renderer to play itself. Live mode plays through the
+ * window so the mic's echo cancellation knows what Jarvis is saying and can subtract it (it can't
+ * see afplay), which is what makes talking over Jarvis work without headphones.
+ */
+export async function render(text: string, settings: Settings): Promise<Uint8Array | null> {
+  if (!text.trim() || process.platform !== 'darwin') return null
+  const engine = await pickEngine(text, settings)
+  let file = engine.kind === 'neural' ? await engine.worker.synth(text, engine.voice, engine.speed) : null
+  try {
+    if (!file) {
+      const voice = engine.kind === 'neural' ? engine.fallback : engine.voice
+      const out = join(tmpdir(), `jarvis-tts-${randomUUID()}.wav`)
+      const child = spawn('say', [...(voice ? ['-v', voice] : []), '-o', out, '--data-format=LEI16@22050', '-f', '-'], {
+        stdio: ['pipe', 'ignore', 'ignore']
+      })
+      child.stdin!.on('error', () => {})
+      child.stdin!.end(text)
+      const ok = await new Promise<boolean>((r) => {
+        child.on('close', (code) => r(code === 0))
+        child.on('error', () => r(false))
+      })
+      if (!ok) return null
+      file = out
+    }
+    return new Uint8Array(await readFile(file))
+  } catch {
+    return null
+  } finally {
+    if (file) void rm(file, { force: true })
+  }
 }
 
 /** Replace whatever is being said. */
