@@ -5025,3 +5025,83 @@ kbd.on-primary {
 .wb-issue.current .wb-work {
   background: none;
 }
+
+/* Round 8 (GPT) */
+.conn-actions select {
+  width: 160px;
+}
+.conn-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.conn-status .small-btn {
+  height: 24px;
+  min-height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+/* Digest: one column per project, stats beneath the name */
+.digest-projects {
+  gap: 8px 24px;
+}
+.digest-chip {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+.digest-chip-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+.digest-chip-stats {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+/* Toolbar: engine leads, groups spaced */
+.controls .ctl-engine {
+  font-weight: 600;
+  color: var(--text);
+}
+.controls .ctl-mode,
+.controls select:not(.ctl-engine),
+.folder {
+  font-weight: 400;
+}
+.ctl-icon {
+  margin-left: 16px;
+}
+.controls .who-mark.sm {
+  margin-left: 16px;
+}
+/* Git files: names left, folders right-aligned */
+.wb-file-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wb-file-dir {
+  flex: 0 1 auto;
+  margin-left: 12px;
+  font-size: 11.5px;
+}
+/* Routines: schedule leads the metadata */
+.routine-when {
+  color: var(--text-2);
+}
+/* Provider dots: small, no glow */
+.health-dot {
+  width: 5px;
+  height: 5px;
+}
+.health-dot.ok {
+  box-shadow: none;
+}
+.wb-pr-meta {
+  flex-wrap: wrap;
+  white-space: normal;
+  overflow: visible;
+}

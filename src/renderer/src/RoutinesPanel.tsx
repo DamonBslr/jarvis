@@ -284,7 +284,7 @@ export function RoutinesPanel({
                   <div className="routine-main" onClick={() => setEditing(r)}>
                     <div className="routine-name">{r.name}</div>
                     <div className="routine-meta">
-                      {describe(r)} · {PROVIDER_LABEL[r.provider]}
+                      <span className="routine-when">{describe(r)}</span> · {PROVIDER_LABEL[r.provider]}
                       {r.model ? ` ${r.model}` : ''} ·{' '}
                       {r.running ? (
                         <span className="routine-running">running…</span>

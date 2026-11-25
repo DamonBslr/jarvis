@@ -53,7 +53,16 @@ function ConnectionRow({ c, onError }: { c: ConnectionStatus; onError: (msg: str
           {c.account && <> · as {c.account}</>}
           {c.lastUsedAt && <> · used {ago(c.lastUsedAt)}</>}
         </small>
-        {c.state !== 'connected' && c.detail && <small className={c.state === 'needs-auth' ? 'warn-inline' : 'error-inline'}>{c.detail}</small>}
+        {c.state !== 'connected' && c.detail && (
+          <div className="conn-status">
+            <small className={c.state === 'needs-auth' ? 'warn-inline' : 'error-inline'}>{c.detail}</small>
+            {c.state === 'needs-auth' && c.kind === 'oauth' && (
+              <button className="ghost attention small-btn" disabled={!!busy} onClick={() => void run('reconnect', () => api.connections.reconnect(c.id))}>
+                {busy === 'reconnect' ? 'Waiting for sign-in…' : 'Reconnect'}
+              </button>
+            )}
+          </div>
+        )}
         {c.tools && (
           <details className="conn-tools">
             <summary>
@@ -110,8 +119,8 @@ function ConnectionRow({ c, onError }: { c: ConnectionStatus; onError: (msg: str
             ))}
           </select>
         )}
-        {c.kind === 'oauth' && (
-          <button className={c.state === 'needs-auth' ? 'ghost attention' : 'ghost'} disabled={!!busy} onClick={() => void run('reconnect', () => api.connections.reconnect(c.id))}>
+        {c.kind === 'oauth' && c.state !== 'needs-auth' && (
+          <button className="ghost" disabled={!!busy} onClick={() => void run('reconnect', () => api.connections.reconnect(c.id))}>
             {busy === 'reconnect' ? 'Waiting for sign-in…' : 'Reconnect'}
           </button>
         )}
