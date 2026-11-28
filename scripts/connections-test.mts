@@ -1,5 +1,5 @@
 // npx tsx scripts/connections-test.mts          (mock OAuth server + MCP server, all local)
-// npx tsx scripts/connections-test.mts --live   (+ OAuth discovery against https://jobs.damonbasler.de/mcp, no sign-in)
+// npx tsx scripts/connections-test.mts --live <mcp-url>   (+ OAuth discovery against a real MCP server, no sign-in)
 import { fakeBrowser as browser, startMock } from './lib/mock-oauth-mcp.mts'
 import { authorize, parseWwwAuthenticate, probe, refresh, accountOf, OAuthError } from '../src/main/connections/oauth'
 import { McpAuthError, listTools, openSession } from '../src/main/mcp/client'
@@ -65,12 +65,15 @@ await pending.then(
 )
 close()
 
-if (process.argv.includes('--live')) {
-  const live = await probe('https://jobs.damonbasler.de/mcp')
-  ok(live.kind === 'oauth', `live: Shortlist offers OAuth (${live.kind})`)
+const liveAt = process.argv.indexOf('--live')
+if (liveAt !== -1) {
+  const url = process.argv[liveAt + 1]
+  if (!url) throw new Error('--live needs an MCP server URL')
+  const live = await probe(url)
+  ok(live.kind === 'oauth', `live: server offers OAuth (${live.kind})`)
   if (live.kind === 'oauth') {
-    ok(live.server.resource === 'https://jobs.damonbasler.de/mcp', `live: resource ${live.server.resource}`)
-    ok(live.server.issuer === 'https://auth.damonbasler.de/api/auth', `live: issuer ${live.server.issuer}`)
+    ok(live.server.resource === url, `live: resource ${live.server.resource}`)
+    ok(!!live.server.issuer, `live: issuer ${live.server.issuer}`)
     ok(!!live.server.registrationEndpoint, 'live: dynamic registration available')
     ok(live.server.scopes.includes('offline_access'), `live: scopes ${live.server.scopes.join(' ')}`)
   }

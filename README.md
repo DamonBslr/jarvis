@@ -8,14 +8,48 @@ Local desktop agent. Electron + React shell that drives the AI CLIs you already 
 | Codex | `codex exec --json` | your ChatGPT login / `~/.codex/config.toml` |
 | Ollama | HTTP `localhost:11434/api/chat` | local, offline |
 
-## Run
+## Requirements
+
+- **macOS on Apple Silicon.** The app is built for arm64 only and uses the macOS keychain, `say` and Metal.
+- **At least one engine:**
+  - [Claude Code](https://docs.claude.com/en/docs/claude-code) (`claude`), logged in with `claude` once. Jarvis drops `ANTHROPIC_API_KEY` from the child's environment by default so runs use your subscription.
+  - [Codex CLI](https://github.com/openai/codex) (`codex`), logged in with `codex login`.
+  - [Ollama](https://ollama.com) for local models: `ollama pull gemma3` (chat) and `ollama pull embeddinggemma` (memory search; optional).
+- **Optional, per feature:**
+  - `gh` (`gh auth login`) for the Git workbench, PR status and GitHub activity.
+  - A Linear personal API key for the Linear workbench and routines.
+  - `uv` for the natural voices (Kokoro, Piper), plus Xcode command line tools and `cmake` or `uv` to build whisper.cpp. `brew install whisper-cpp` works too.
+
+Jarvis reads your login shell's `PATH`, so anything you can run in Terminal is found.
+
+## Install
+
+**Prebuilt:** download the latest `Jarvis-<version>-arm64.dmg` from [Releases](https://github.com/DamonBslr/jarvis/releases), drag Jarvis to Applications and open it. Installed copies update themselves from this repo's releases.
+
+**From source** (Node 22+, pnpm 10):
 
 ```bash
+git clone https://github.com/DamonBslr/jarvis.git
+cd jarvis
 pnpm install
 pnpm dev        # dev with hot reload
 pnpm build && pnpm start
-pnpm dist       # signed Jarvis.app + dmg + zip in dist/
+pnpm dist       # Jarvis.app + dmg + zip in dist/ (signed if you have a signing identity)
 ```
+
+**First launch** opens a 4-step setup: your name, which sources Jarvis may read (all off until you allow them), which projects you're focused on, and a first sync. Grant microphone access when you first use voice. Everything after that lives in Settings.
+
+All data stays on your Mac in `~/Library/Application Support/jarvis` (chats, memory DB, settings, encrypted secrets). Only your prompts go to the engine you pick.
+
+### Running your own fork
+
+If you publish your own builds, change these so updates and sign-ins point at your fork:
+
+- `electron-builder.yml`: `appId`, `copyright`, and `publish.owner` / `publish.repo` (the auto-update feed).
+- `package.json`: `author`.
+- `src/main/connections/oauth.ts`: `CLIENT_URI`, the homepage Jarvis shows when it registers with OAuth servers.
+
+Then see [Packaging + auto-update](#packaging--auto-update) for signing and releases.
 
 Shortcuts (change in Settings → Shortcuts):
 
@@ -74,7 +108,7 @@ Settings → **Connections** gives Jarvis's agents lasting access to the service
 | **No auth** | open MCP servers | — |
 | **Website login** | sites without an API | Opens the site in Jarvis's own browser profile. You log in once, and the agents' `browser` tool stays logged in. |
 
-Example: add `https://jobs.damonbasler.de/mcp`. Jarvis finds `auth.damonbasler.de` and you approve "Jarvis" there. From then on, agents get the Shortlist tools as `mcp__shortlist__*`, acting as your account. To revoke access, remove the connection here or revoke the client on your auth server.
+Example: add `https://jobs.example.com/mcp`. Jarvis finds its auth server (say `auth.example.com`) and you approve "Jarvis" there. From then on, agents get that server's tools as `mcp__<name>__*`, acting as your account. To revoke access, remove the connection here or revoke the client on your auth server.
 
 **Where secrets live.** `connections.json` stores only names, URLs and policies. Tokens, refresh tokens, client registrations and keys are stored in the vault (`secrets.json`, encrypted with the macOS keychain via `safeStorage`). Agents never receive credentials. Each connection is a stdio instance of the Jarvis bridge (`JARVIS_PROXY=<id>`) that forwards calls to the main process. The main process holds the MCP session, adds the token, refreshes it when needed and passes the server's instructions through. No token appears in CLI arguments, in environment variables or in the agent's context.
 
@@ -86,7 +120,7 @@ Example: add `https://jobs.damonbasler.de/mcp`. Jarvis finds `auth.damonbasler.d
 
 "Ask" (read-only) chats always get only the read-only tools. Every call is logged to `connections-audit.jsonl`; Settings → Connections → *Recent agent activity* shows the log.
 
-Tests: `npx tsx scripts/connections-test.mts --live` covers OAuth against a mock server, plus discovery against Shortlist. `pnpm build && node scripts/connections-e2e.mts` runs the whole proxy path in Electron: vault, refresh, policies, approvals and audit.
+Tests: `npx tsx scripts/connections-test.mts` covers OAuth against a mock server; add `--live <mcp-url>` to also check discovery against a real server. `pnpm build && node scripts/connections-e2e.mts` runs the whole proxy path in Electron: vault, refresh, policies, approvals and audit.
 
 ## Memory & knowledge
 
@@ -167,7 +201,7 @@ Scheduled prompts with fresh data, answered into a new chat (tagged *routine*) p
 
 `pnpm dist` builds `dist/Jarvis-<v>-arm64.dmg` and the `-mac.zip` update payload with electron-builder (`electron-builder.yml`): hardened runtime, mic entitlement, signed with the first identity in your keychain. `bridge.js` is unpacked from the asar so agent CLIs can spawn it.
 
-Auto-update uses electron-updater against GitHub Releases (`publish` in `electron-builder.yml`, currently `DamonBslr/jarvis`). To ship an update: bump `version` in package.json, then `GH_TOKEN=… pnpm release` — it uploads dmg, zip and `latest-mac.yml`; installed apps download it in the background and install on quit (Settings → App). For other Macs without Gatekeeper warnings, sign with a *Developer ID Application* certificate and set `APPLE_API_KEY`/`APPLE_API_KEY_ID`/`APPLE_API_ISSUER` (or `APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID`) so electron-builder notarizes. A private repo also needs a token at runtime, so a public releases repo is simpler.
+Auto-update uses electron-updater against GitHub Releases (`publish` in `electron-builder.yml`; point it at your own repo in a fork). To ship an update: bump `version` in package.json, then `GH_TOKEN=… pnpm release` — it uploads dmg, zip and `latest-mac.yml`; installed apps download it in the background and install on quit (Settings → App). For other Macs without Gatekeeper warnings, sign with a *Developer ID Application* certificate and set `APPLE_API_KEY`/`APPLE_API_KEY_ID`/`APPLE_API_ISSUER` (or `APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID`) so electron-builder notarizes. A private repo also needs a token at runtime, so a public releases repo is simpler.
 
 ## Tests
 
