@@ -21,7 +21,8 @@ const env = process.env
 const num = (v: string | undefined, d: number) => (v && Number.isFinite(Number(v)) ? Number(v) : d)
 
 const PORT = num(env.PORT, 8080)
-const HOST = env.HOST ?? '0.0.0.0'
+/** '::' listens on IPv4 and IPv6 (so `localhost` health checks work whichever it resolves to). */
+const HOST = env.HOST ?? '::'
 const SECRET = env.RELAY_SECRET ?? ''
 const DATA_DIR = env.DATA_DIR ?? join(process.cwd(), 'data')
 const MAX_BODY = num(env.MAX_BODY_BYTES, 1024 * 1024)
@@ -389,7 +390,13 @@ setInterval(() => {
 }, 10 * 60_000).unref()
 
 await load()
-server.listen(PORT, HOST, () => console.log(`jarvis-relay listening on ${HOST}:${PORT} (${hooks.size} hooks, ${queue.length} queued)`))
+const listening = (host: string) => () => console.log(`jarvis-relay listening on ${host}:${PORT} (${hooks.size} hooks, ${queue.length} queued)`)
+server.once('error', (err: NodeJS.ErrnoException) => {
+  // No IPv6 in this container: fall back to IPv4 only.
+  if (HOST === '::' && (err.code === 'EAFNOSUPPORT' || err.code === 'EADDRNOTAVAIL')) server.listen(PORT, '0.0.0.0', listening('0.0.0.0'))
+  else throw err
+})
+server.listen(PORT, HOST, listening(HOST))
 
 const stop = () => {
   console.log('shutting down')
