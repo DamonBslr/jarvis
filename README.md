@@ -246,3 +246,7 @@ scripts/smoke.ts     headless adapter test: bun scripts/smoke.ts codex "prompt"
 ## Notes
 
 - Claude Code children load your normal `~/.claude` config (hooks, MCP servers, skills, CLAUDE.md). Your Linear MCP / skills are available to Jarvis automatically.
+
+## License
+
+[MIT](LICENSE)

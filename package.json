@@ -4,6 +4,7 @@
   "version": "0.7.1",
   "description": "Local Jarvis-style desktop agent driving Claude Code, Codex CLI and Ollama",
   "author": "DamonBslr",
+  "license": "MIT",
   "main": "./out/main/index.js",
   "private": true,
   "scripts": {
