@@ -19,6 +19,8 @@ export interface BridgeDeps {
   settings(): Promise<Settings>
   /** Show an approval popup in the window that owns this run. */
   requestApproval(req: ApprovalRequest): void
+  /** automation_* tools, answered by the automations module for the run's chat. */
+  automationTool(name: string, args: any, runId: string): Promise<string>
 }
 
 const token = randomBytes(24).toString('hex')
@@ -83,6 +85,7 @@ async function handleTool(name: string, args: any, runId: string, deps: BridgeDe
       enabled: settings.computerUse,
       ask: async (toolName, input) => (await askUser(deps, runId, toolName, input)).behavior === 'allow'
     })
+  if (name.startsWith('automation_')) return deps.automationTool(name, args, runId)
   switch (name) {
     case 'approve': {
       const decision = await askUser(deps, runId, String(args.tool_name), args.input)

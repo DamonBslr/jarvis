@@ -72,14 +72,18 @@ export const claudeProvider: Provider = {
             'mcp__jarvis__knowledge_search',
             'mcp__jarvis__recent_activity',
             'mcp__jarvis__open_loops',
-            'mcp__jarvis__connect_service'
+            'mcp__jarvis__connect_service',
+            // Scheduling is what the user asked for, shows up in Automations at once, and never raises access.
+            'mcp__jarvis__automation_schedule',
+            'mcp__jarvis__automation_list',
+            'mcp__jarvis__automation_run_now'
           ]
         : []),
       ...(req.extraAllowedTools ?? [])
     ]
     if (allowed.length) args.push('--allowedTools', ...allowed)
     // In "Edit files" mode, anything beyond file edits (shell, git, network) asks you in Jarvis.
-    // Only when a window can answer (routines run unattended: anything not pre-allowed is denied).
+    // Only when a window can answer (automations run unattended: anything not pre-allowed is denied).
     if (req.mcp && req.autonomy === 'edit' && req.mcp.env.JARVIS_TOOLS?.split(',').includes('approve'))
       args.push('--permission-prompt-tool', 'mcp__jarvis__approve')
     const extra = [req.systemPrompt, req.context].filter(Boolean).join('\n\n')

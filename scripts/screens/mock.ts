@@ -11,8 +11,9 @@ import type {
   Memory,
   Project,
   ProjectCandidate,
-  Routine,
-  Settings
+  AutomationView,
+  Settings,
+  WebhookRelayStatus
 } from '@shared/types'
 
 const params = new URLSearchParams(location.search)
@@ -70,7 +71,8 @@ const settings: Settings = {
   syncSources: { git: true, github: true, linear: true, claude: true },
   syncIntervalMin: 30,
   projectBriefs: true,
-  codeRoots: ['~/code']
+  codeRoots: ['~/code'],
+  webhookRelayUrl: 'https://relay.example.com'
 }
 
 const tool = (id: string, name: string, input: object, output: string, isError = false) => ({
@@ -180,7 +182,7 @@ const others: Conversation[] = [
   sessions: {},
   messages: [{ id: 'x', role: 'user' as const, createdAt: now, parts: [{ type: 'text' as const, text: 'hi' }] }],
   updatedAt: now - (ago as number),
-  routineId: tag === 'routine' ? 'r1' : undefined,
+  automationId: tag === 'routine' ? 'r1' : undefined,
   quick: tag === 'quick'
 }))
 
@@ -251,10 +253,63 @@ const memories: Memory[] = [
   updatedAt: now - i * day
 }))
 
-const routines: Routine[] = [
-  { id: 'r1', name: 'Morning briefing', prompt: 'Summarize {{linear}} and {{prs}} for today.', schedule: { kind: 'daily', time: '08:30', days: [1, 2, 3, 4, 5] }, provider: 'claude', cwd: '/Users/sam/code/atlas', enabled: true, notify: true, speak: true, lastRunAt: now - 3 * hour, lastConvId: 'c3' },
-  { id: 'r2', name: 'PR watch', prompt: 'Check {{prs}} for failing checks.', schedule: { kind: 'interval', minutes: 60 }, provider: 'codex', cwd: '/Users/sam/code/atlas', enabled: true, notify: true, speak: false, lastRunAt: now - 25 * min },
-  { id: 'r3', name: 'Friday retro notes', prompt: 'Draft a retro from this week.', schedule: { kind: 'daily', time: '16:00', days: [5] }, provider: 'ollama', cwd: '/Users/sam/code/atlas', enabled: false, notify: false, speak: false }
+const automations: AutomationView[] = [
+  {
+    id: 'r1', name: 'Morning briefing', prompt: 'Give me my briefing for {{date}}.\n\nMy Linear issues:\n{{linear}}\n\nMy open pull requests:\n{{prs}}',
+    schedule: { kind: 'daily', time: '08:30', days: [1, 2, 3, 4, 5] }, thread: { kind: 'dedicated', convId: 'c3' }, threadTitle: 'Morning briefing',
+    provider: 'claude', cwd: '/Users/sam/code/atlas', autonomy: 'ask', enabled: true, notify: true, speak: true, lastRunAt: now - 3 * hour, lastConvId: 'c3',
+    nextRunAt: now + 18 * hour,
+    history: [
+      { at: now - 3 * hour, trigger: 'schedule', status: 'ok', convId: 'c3', durationMs: 48_000 },
+      { at: now - 27 * hour, trigger: 'schedule', status: 'ok', convId: 'c3', durationMs: 61_000 },
+      { at: now - 51 * hour, trigger: 'manual', status: 'failed', detail: 'gh: authentication expired', durationMs: 4_000 },
+      { at: now - 75 * hour, trigger: 'schedule', status: 'ok', convId: 'c3', durationMs: 52_000 }
+    ]
+  },
+  {
+    id: 'r2', name: 'Watch CI on #482', prompt: 'Check the checks on PR #482. If any failed, find out why and fix it.',
+    schedule: { kind: 'interval', minutes: 30 }, thread: { kind: 'origin', convId: 'c1' }, threadTitle: 'Fix flaky checkout test', createdBy: 'agent',
+    provider: 'claude', cwd: '/Users/sam/code/atlas', autonomy: 'edit', enabled: true, notify: true, speak: false, lastRunAt: now - 12 * min, lastConvId: 'c1',
+    nextRunAt: now + 18 * min, history: [{ at: now - 12 * min, trigger: 'schedule', status: 'ok', convId: 'c1', durationMs: 95_000 }]
+  },
+  {
+    id: 'r3', name: 'PR review sweep', prompt: 'Here are my open PRs and the PRs waiting for my review:\n{{prs}}',
+    schedule: { kind: 'interval', minutes: 120 }, thread: { kind: 'new' }, provider: 'codex', cwd: '/Users/sam/code/atlas', autonomy: 'ask',
+    enabled: true, notify: true, speak: false, lastRunAt: now - 70 * min, lastConvId: 'c2', running: true, nextRunAt: now + 50 * min
+  },
+  {
+    id: 'r5', name: 'Review new pull requests',
+    prompt: 'A pull request was opened or reopened. The GitHub webhook payload is below.\n\n{{payload}}\n\nCheck out the branch, review the change for bugs and risky spots, and give me a short verdict with the 3 most important findings. Do not push or comment on GitHub.',
+    schedule: {
+      kind: 'webhook',
+      filters: [
+        { path: 'headers.x-github-event', op: 'equals', value: 'pull_request' },
+        { path: 'body.action', op: 'in', value: ['opened', 'reopened'] },
+        { path: 'body.pull_request.draft', op: 'notEquals', value: 'true' }
+      ],
+      signature: { header: 'x-hub-signature-256', encoding: 'hex', prefix: 'sha256=', algorithm: 'sha256' },
+      dedupe: { replayKey: '{{headers.x-github-delivery}}', coalesceKey: '{{body.pull_request.number}}', coalesceWindowSeconds: 120 },
+      maxDeliveryAgeMinutes: 360
+    },
+    thread: { kind: 'dedicated', convId: 'c2' }, threadTitle: 'Review new pull requests',
+    provider: 'claude', model: 'sonnet', cwd: '/Users/sam/code/atlas', autonomy: 'ask', enabled: true, notify: true, speak: false,
+    lastRunAt: now - 41 * min, lastConvId: 'c2',
+    webhook: {
+      url: 'https://relay.example.com/hooks/r5/Qm9vazVfd2ViaG9va190b2tlbl9kZW1v',
+      hasSecret: true,
+      pending: 0,
+      lastDelivery: { at: now - 6 * min, outcome: 'filtered', detail: 'Did not match: body.action in opened, reopened' }
+    },
+    history: [
+      { at: now - 41 * min, trigger: 'webhook', status: 'ok', convId: 'c2', durationMs: 132_000 },
+      { at: now - 3 * hour, trigger: 'webhook', status: 'skipped', detail: 'Signature in x-hub-signature-256 did not match' },
+      { at: now - 26 * hour, trigger: 'webhook', status: 'ok', convId: 'c2', durationMs: 98_000 }
+    ]
+  },
+  {
+    id: 'r4', name: 'Friday retro notes', prompt: 'Draft a retro from this week.', schedule: { kind: 'daily', time: '16:00', days: [5] },
+    thread: { kind: 'new' }, provider: 'ollama', model: 'llama3.2', cwd: '/Users/sam/code/atlas', autonomy: 'ask', enabled: false, notify: false, speak: false
+  }
 ]
 
 const connectors: ConnectorInfo[] = [
@@ -394,7 +449,22 @@ const api: JarvisApi = {
     onLive: on('live'),
     onLiveToggle: on('liveToggle')
   },
-  routines: { list: ok(routines), save: noop, remove: noop, runNow: noop, onChanged: on('routines') },
+  automations: {
+    list: async () => (scene === 'empty-auto' ? [] : automations),
+    save: noop,
+    remove: noop,
+    runNow: noop,
+    onChanged: on('automations'),
+    onRun: on('automationRun'),
+    regenerateToken: noop,
+    setSignatureSecret: noop
+  },
+  webhooks: {
+    status: ok<WebhookRelayStatus>({ url: settings.webhookRelayUrl, hasSecret: true, state: 'connected', connectedAt: now - 2 * hour, hooks: 1, lastDeliveryAt: now - 6 * min }),
+    setRelaySecret: noop,
+    reconnect: noop,
+    onStatus: on('webhookStatus')
+  },
   connections: {
     list: ok(connections),
     probe: ok({ kind: 'oauth' }),

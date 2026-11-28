@@ -15,7 +15,7 @@ const textOf = (parts: { type: string; text?: string }[]) =>
 export const jarvisConnector: Connector = {
   id: 'jarvis',
   name: 'Jarvis chats',
-  reads: 'Your conversations with Jarvis (quick bar, voice, routines)',
+  reads: 'Your conversations with Jarvis (quick bar, voice, automations)',
   async detect() {
     return { available: true, detail: 'built in' }
   },
@@ -45,7 +45,7 @@ export const jarvisConnector: Connector = {
         ].join('\n'),
         author: 'Jarvis',
         at: c.updatedAt,
-        meta: { convId: c.id, linear: c.linear?.identifier, routine: c.routineId }
+        meta: { convId: c.id, linear: c.linear?.identifier, automation: c.automationId }
       })
     }
     return upsertItems(items)

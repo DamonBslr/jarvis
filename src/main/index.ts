@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, session, shell, type WebContents } from 'electron'
 import { stat, writeFile } from 'node:fs/promises'
-import type { AddressedRequest, AgentEvent, ProviderId, Routine, RunRequest, Settings } from '@shared/types'
+import type { AddressedRequest, AgentEvent, Automation, PanelId, ProviderId, RunRequest, Settings } from '@shared/types'
 import { loadShellEnv } from './shellEnv'
 import * as store from './store'
 import { MODES } from './modes'
@@ -28,6 +28,7 @@ import {
   onActiveRunsChanged,
   providerStatuses,
   requestApproval,
+  runRequest,
   startRun
 } from './runner'
 import {
@@ -47,7 +48,8 @@ import {
   toggleQuick
 } from './windows'
 import * as voice from './voice'
-import * as routines from './routines'
+import * as automations from './automations'
+import * as webhooks from './webhooks'
 import { checkForUpdates, initUpdater, installUpdate, updateState } from './updater'
 import { createTray, refreshTray, setTrayBusy } from './tray'
 
@@ -112,16 +114,19 @@ function openConversation(convId: string) {
   else send()
 }
 
-function openPanel(panel: 'settings' | 'routines' | 'projects' | 'onboarding') {
+function openPanel(panel: PanelId, arg?: string) {
   const w = showMain()
-  const send = () => setTimeout(() => w.webContents.send('jarvis:open-panel', panel), 300)
+  const send = () => setTimeout(() => w.webContents.send('jarvis:open-panel', panel, arg), 300)
   if (w.webContents.isLoading()) w.webContents.once('did-finish-load', send)
   else send()
 }
 
-const routineHooks: routines.RoutineHooks = {
+const automationHooks: automations.AutomationHooks = {
   conversationsChanged: () => broadcast('jarvis:conversations-changed'),
-  openConversation
+  openConversation,
+  // Every window gets the stream; each one shows only runs for chats it knows.
+  event: (runId, ev) => broadcast('jarvis:event', runId, ev),
+  run: (ev) => broadcast('jarvis:automation-run', ev)
 }
 
 // ---- IPC ------------------------------------------------------------------
@@ -284,7 +289,17 @@ function registerIpc() {
   ipcMain.handle('getSettings', () => store.getSettings())
   ipcMain.handle('saveSettings', async (_e, s: Settings) => {
     const before = await store.getSettings()
+    // A malformed relay URL is kept as typed; the relay status in Settings explains what's wrong.
+    try {
+      s.webhookRelayUrl = webhooks.normalizeRelayUrl(String(s.webhookRelayUrl ?? ''))
+    } catch {
+      s.webhookRelayUrl = String(s.webhookRelayUrl ?? '').trim()
+    }
     await store.saveSettings(s)
+    if (before.webhookRelayUrl !== s.webhookRelayUrl) {
+      webhooks.restart()
+      broadcast('jarvis:automations-changed') // webhook URLs changed
+    }
     // Turning T3 tools off revokes Jarvis's T3 session instead of leaving a 30-day token around.
     if (before.t3Tools && !s.t3Tools) void loadShellEnv().then(disconnectT3).catch(() => {})
     await applySettings(s)
@@ -331,16 +346,26 @@ function registerIpc() {
     void refreshTray()
   })
 
-  // Routines
-  ipcMain.handle('routines:list', async () =>
-    (await routines.listRoutines()).map((r) => ({ ...r, running: routines.isRunning(r.id) }))
-  )
-  ipcMain.handle('routines:save', (_e, r: Routine) => routines.saveRoutine(r))
-  ipcMain.handle('routines:remove', (_e, id: string) => routines.removeRoutine(id))
-  ipcMain.handle('routines:runNow', (_e, id: string) => {
-    void routines.runRoutine(id, routineHooks).finally(() => broadcast('jarvis:routines-changed'))
-    setTimeout(() => broadcast('jarvis:routines-changed'), 50)
+  // Automations
+  ipcMain.handle('automations:list', () => automations.automationViews())
+  ipcMain.handle('automations:save', async (_e, a: Automation) => {
+    await automations.saveAutomation(a)
   })
+  ipcMain.handle('automations:remove', (_e, id: string) => automations.removeAutomation(String(id)))
+  ipcMain.handle('automations:runNow', (_e, id: string) => {
+    void automations.runAutomation(String(id), 'manual')
+  })
+  ipcMain.handle('automations:regenerateToken', (_e, id: string) => webhooks.regenerateToken(String(id)))
+  ipcMain.handle('automations:setSignatureSecret', (_e, id: string, secret: string | null) =>
+    webhooks.setSignatureSecret(String(id), typeof secret === 'string' ? secret : null)
+  )
+
+  // Webhook relay (Settings → Tools)
+  ipcMain.handle('webhooks:status', () => webhooks.relayStatus())
+  ipcMain.handle('webhooks:setRelaySecret', (_e, secret: string | null) =>
+    webhooks.setRelaySecret(typeof secret === 'string' ? secret : null)
+  )
+  ipcMain.handle('webhooks:reconnect', () => webhooks.reconnect())
 
   // Connections: services agents use with your access (OAuth sign-in opens your browser).
   const openSignIn = async (url: string) => {
@@ -476,7 +501,11 @@ let quitting = false
 app.whenReady().then(async () => {
   void loadShellEnv() // warm up; first run spawns a login shell
   lockDownPermissions()
-  await startBridge({ settings: () => store.getSettings(), requestApproval })
+  await startBridge({
+    settings: () => store.getSettings(),
+    requestApproval,
+    automationTool: (name, args, runId) => automations.agentTool(name, args, runRequest(runId))
+  })
   connections.onConnectionsChanged(() => broadcast('jarvis:connections-changed'))
   knowledge.onKnowledgeEvents({
     progress: (p) => broadcast('jarvis:knowledge-progress', p),
@@ -492,14 +521,14 @@ app.whenReady().then(async () => {
 
   createTray({
     settings: () => store.getSettings(),
-    routines: () => routines.listRoutines(),
+    automations: () => automations.listAutomations(),
     update: updateState,
     openMain: () => showMain(true),
     openQuick: (v) => showQuick({ voice: v }),
     live: () => liveOn,
     toggleLive: () => toggleLive(),
     openPanel,
-    runRoutine: (id) => void routines.runRoutine(id, routineHooks).finally(() => broadcast('jarvis:routines-changed')),
+    runAutomation: (id) => void automations.runAutomation(id, 'manual'),
     setWakeWord: async (on) => {
       const s = { ...(await store.getSettings()), wakeWord: on }
       await store.saveSettings(s)
@@ -512,9 +541,14 @@ app.whenReady().then(async () => {
   onActiveRunsChanged((n) => setTrayBusy(n > 0))
 
   knowledge.startKnowledgeScheduler()
-  routines.startScheduler(routineHooks, () => {
-    broadcast('jarvis:routines-changed')
+  automations.startScheduler(automationHooks, () => {
+    broadcast('jarvis:automations-changed')
+    webhooks.automationsChanged()
     void refreshTray()
+  })
+  webhooks.startWebhooks({
+    onStatus: (s) => broadcast('jarvis:webhook-status', s),
+    changed: () => broadcast('jarvis:automations-changed')
   })
   void initUpdater({
     auto: settings.autoUpdate,

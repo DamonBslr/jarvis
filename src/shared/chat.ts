@@ -1,4 +1,4 @@
-// Pure chat helpers shared by the main window, the quick bar and main-process routines.
+// Pure chat helpers shared by the main window, the quick bar and main-process automations.
 import type { AgentEvent, ChatMessage, Conversation } from './types'
 
 export const uid = () => crypto.randomUUID().replace(/-/g, '').slice(0, 20)

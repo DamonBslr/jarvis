@@ -1,0 +1,11 @@
+{
+  "name": "jarvis-relay",
+  "private": true,
+  "type": "module",
+  "description": "Public webhook relay for Jarvis automations (zero dependencies)",
+  "license": "MIT",
+  "engines": { "node": ">=23.6" },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server.ts"
+  }
+}

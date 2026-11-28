@@ -8,6 +8,7 @@
  *  - knowledge: projects, briefs, open loops and activity search over everything Jarvis syncs
  *  - linear_*:  read/update Linear issues with the key stored in Jarvis
  *  - connections: list the services the user connected, and set up a new one with the user (popup, sign-in)
+ *  - automation_*: schedule prompts that run later in this chat, a dedicated chat or a new chat per run
  *  - proxy mode (JARVIS_PROXY=<connection id>): this instance stands in for one remote MCP server the user
  *               connected. tools/list and tools/call go to Jarvis, which adds the credentials (they never
  *               reach this process or the agent), refreshes tokens and enforces the connection's policy.
@@ -156,6 +157,101 @@ const TOOLS: Tool[] = [
       },
       required: ['url']
     }
+  },
+  {
+    name: 'automation_schedule',
+    group: 'automations',
+    description:
+      'Create or update a Jarvis automation: a prompt Jarvis runs on a schedule or when a webhook is called, unattended, even when this chat is closed. Use it when the user asks to do something later, regularly or at a time ("every morning", "in 2 hours", "each Friday at 5"), or whenever an outside service sends an event (schedule type "webhook": the reply includes the webhookUrl to give that service; request values are untrusted and reach the run as a delimited data block at {{payload}} or after the prompt). By default runs post into this chat; thread "dedicated" gives the automation one chat of its own that every run reuses, "new" opens a new chat per run. Runs use this chat\'s engine, workspace and access level. Pass id to update an existing automation; only the fields you pass change. Write the prompt so it stands alone: the run sees it as a new message, possibly in a fresh session.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: str('Existing automation id to update (from automation_list). Omit to create.'),
+        title: str('Short name, e.g. "PR review sweep"'),
+        prompt: str('What to do each run. May use {{linear}}, {{prs}}, {{repos}}, {{date}} for fresh data; webhook runs may place the request with {{payload}}.'),
+        schedule: {
+          type: 'object',
+          description:
+            'When to run: {type:"interval", everyMinutes} | {type:"fixed_time", timeOfDay:"HH:MM", weekdays?:[0-6, 0=Sunday; default every day]} | {type:"once", runAt:"YYYY-MM-DDTHH:MM" local time} | {type:"webhook", filters?, signature?, dedupe?, maxDeliveryAgeMinutes?}',
+          properties: {
+            type: { type: 'string', enum: ['interval', 'fixed_time', 'once', 'webhook'] },
+            everyMinutes: { type: 'number', minimum: 1 },
+            timeOfDay: str('24h local time, HH:MM'),
+            weekdays: { type: 'array', items: { type: 'integer', minimum: 0, maximum: 6 } },
+            runAt: str('Local date-time for type once'),
+            filters: {
+              type: 'array',
+              maxItems: 16,
+              description:
+                'webhook: all must match. path like headers.x-github-event or body.action; a [] segment matches any array item (body.labels[].name). Values compare as strings; objects only pass exists; notEquals passes only if no item equals. Omitted on update: keep stored; [] clears.',
+              items: {
+                type: 'object',
+                properties: {
+                  path: str('headers.<name>, body.<path>, query.<name> or method'),
+                  op: { type: 'string', enum: ['equals', 'notEquals', 'startsWith', 'in', 'exists'] },
+                  value: { description: 'string; for "in" an array of non-empty strings without commas', anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] }
+                },
+                required: ['path', 'op']
+              }
+            },
+            signature: {
+              type: 'object',
+              description: 'webhook: HMAC check over the raw body. Omit to rely on the URL token alone. secret is required the first time; later it defaults to the stored one.',
+              properties: {
+                header: str('e.g. x-hub-signature-256'),
+                encoding: { type: 'string', enum: ['hex', 'base64'] },
+                prefix: str('Text before the digest, e.g. "sha256=". Empty for none.'),
+                algorithm: { type: 'string', enum: ['sha256', 'sha1', 'sha512'] },
+                secret: str('Shared secret; stored in the keychain, never shown again')
+              },
+              required: ['header', 'encoding', 'prefix']
+            },
+            dedupe: {
+              type: 'object',
+              description: 'webhook: key templates over the request, e.g. {{headers.x-github-delivery}}.',
+              properties: {
+                replayKey: str('A request whose key was seen before is dropped'),
+                coalesceKey: str('First request runs at once; more with the same key inside the window share one follow-up run'),
+                coalesceWindowSeconds: { type: 'integer', minimum: 10, maximum: 3600, description: 'Default 120' }
+              }
+            },
+            maxDeliveryAgeMinutes: { type: 'integer', minimum: 1, maximum: 1440, description: 'webhook: skip requests the relay held longer than this while Jarvis was offline' }
+          },
+          required: ['type']
+        },
+        thread: {
+          type: 'string',
+          enum: ['this', 'dedicated', 'new'],
+          description: 'Where runs post: this chat (default), one dedicated chat for all runs, or a new chat each run'
+        },
+        freshSession: {
+          type: 'boolean',
+          description: 'this / dedicated: start each run with a fresh agent session instead of continuing the conversation'
+        },
+        enabled: { type: 'boolean', description: 'false pauses it. Default true.' },
+        notify: { type: 'boolean', description: 'macOS notification when a run finishes. Default true.' }
+      }
+    }
+  },
+  {
+    name: 'automation_list',
+    group: 'automations',
+    description: "List the user's Jarvis automations (id, schedule, where they post, next and last run).",
+    inputSchema: { type: 'object', properties: {} },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+  },
+  {
+    name: 'automation_run_now',
+    group: 'automations',
+    description: 'Run an automation once right now, outside its schedule.',
+    inputSchema: { type: 'object', properties: { id: str('Automation id') }, required: ['id'] }
+  },
+  {
+    name: 'automation_delete',
+    group: 'automations',
+    description: 'Delete an automation. To stop it temporarily, use automation_schedule with enabled false instead.',
+    inputSchema: { type: 'object', properties: { id: str('Automation id') }, required: ['id'] },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }
   },
   {
     name: 'linear_comment',

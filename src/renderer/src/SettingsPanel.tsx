@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ConnectionsTab } from './ConnectionsTab'
-import type { AppLanguage, ProviderStatus, Settings, UpdateState, VoiceProgress, VoiceStatus } from '@shared/types'
+import type { AppLanguage, ProviderStatus, Settings, UpdateState, VoiceProgress, VoiceStatus, WebhookRelayStatus } from '@shared/types'
 import { GERMAN_VOICES, LANGUAGES } from '@shared/language'
 import { IconBrain, IconInfo, IconKeyboard, IconMic, IconPlug, IconSettings, IconWrench, IconX } from './icons'
 
@@ -346,6 +346,122 @@ function VoiceTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
   )
 }
 
+/** 32 random bytes, URL-safe: what RELAY_SECRET on the relay must equal. */
+function randomSecret() {
+  const b = crypto.getRandomValues(new Uint8Array(32))
+  return btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function WebhookRelay({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
+  const [st, setSt] = useState<WebhookRelayStatus | null>(null)
+  const [secret, setSecret] = useState('')
+  const [revealed, setRevealed] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    void api.webhooks.status().then(setSt)
+    return api.webhooks.onStatus(setSt)
+  }, [])
+  const saveSecret = async (v: string | null) => {
+    setError(null)
+    try {
+      await api.webhooks.setRelaySecret(v)
+      setSecret('')
+      setSt(await api.webhooks.status())
+    } catch (err) {
+      setError(err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(err))
+      throw err
+    }
+  }
+  const unsaved = (st?.url ?? '') !== s.webhookRelayUrl
+  const dot = st?.state === 'connected' ? 'ok' : st?.state === 'error' ? 'err' : st?.state === 'connecting' ? 'running' : 'idle'
+  const text = unsaved
+    ? 'Save to connect to this URL'
+    : !s.webhookRelayUrl
+      ? 'Off: automations can’t use webhooks'
+      : !st?.hasSecret
+        ? 'Needs the relay secret'
+        : st.state === 'connected'
+          ? `Connected · ${st.hooks} webhook${st.hooks === 1 ? '' : 's'} registered${st.lastDeliveryAt ? ` · last request ${new Date(st.lastDeliveryAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}` : ''}`
+          : st.state === 'connecting'
+            ? 'Connecting…'
+            : (st.error ?? 'Not connected')
+  return (
+    <>
+      <h3 className="settings-section">Webhook relay</h3>
+      <div className="form-group">
+        <small className="row-help">
+          Webhook automations need a public URL. Jarvis keeps an outbound connection to a small relay you deploy (the <code>relay/</code> folder,
+          see the README), so nothing on this Mac is exposed.
+        </small>
+        <label className="row">
+          <span>Relay URL</span>
+          <input
+            value={s.webhookRelayUrl}
+            placeholder="https://relay.example.com"
+            spellCheck={false}
+            onChange={(e) => setS({ ...s, webhookRelayUrl: e.target.value })}
+          />
+        </label>
+        <div className="row">
+          <span>Secret</span>
+          <div className="relay-secret">
+            <input
+              type="password"
+              value={secret}
+              autoComplete="off"
+              placeholder={st?.hasSecret ? 'Stored · type to replace' : 'Same as RELAY_SECRET on the relay'}
+              onChange={(e) => setSecret(e.target.value)}
+            />
+            <button className="ghost" disabled={!secret.trim()} onClick={() => void saveSecret(secret).catch(() => {})}>
+              Save
+            </button>
+            <button
+              className="ghost"
+              title="Make a strong secret and store it; copy it into RELAY_SECRET on the relay"
+              onClick={() => {
+                const v = randomSecret()
+                void saveSecret(v).then(() => setRevealed(v), () => {})
+              }}
+            >
+              Generate
+            </button>
+            {st?.hasSecret && (
+              <button className="ghost danger-hover" title="Remove the stored secret" onClick={() => void saveSecret(null).catch(() => {})}>
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+        {revealed && (
+          <div className="relay-reveal">
+            <span>Stored. Set this as RELAY_SECRET on the relay; it is shown only now.</span>
+            <code>{revealed}</code>
+            <span>
+              <button className="link" onClick={() => void navigator.clipboard.writeText(revealed)}>
+                Copy
+              </button>{' '}
+              ·{' '}
+              <button className="link" onClick={() => setRevealed(null)}>
+                Done
+              </button>
+            </span>
+          </div>
+        )}
+        {error && <small className="error-inline">{error}</small>}
+        <div className="relay-status">
+          <span className={`auto-dot ${unsaved ? 'idle' : dot}`} />
+          <span>{text}</span>
+          {!unsaved && s.webhookRelayUrl && st?.hasSecret && st.state !== 'connected' && (
+            <button className="link" onClick={() => void api.webhooks.reconnect()}>
+              Retry
+            </button>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
 function ToolsTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
   return (
     <>
@@ -392,6 +508,7 @@ function ToolsTab({ s, setS }: { s: Settings; setS: (s: Settings) => void }) {
           </small>
         </div>
       </label>
+      <WebhookRelay s={s} setS={setS} />
     </>
   )
 }

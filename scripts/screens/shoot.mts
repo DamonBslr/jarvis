@@ -43,7 +43,78 @@ const scenes: Scene[] = [
   { name: '05-connect', url: '?scene=chat', prep: (p) => p.evaluate(() => (window as any).__mock.approve('connect')) },
   { name: '06-projects', url: '?scene=chat', prep: click('Projects') },
   { name: '07-memory', url: '?scene=chat', prep: click('Memory') },
-  { name: '08-routines', url: '?scene=chat', prep: click('Routines') },
+  { name: '08-automations', url: '?scene=chat', prep: click('Automations') },
+  {
+    name: '08b-automation-edit',
+    url: '?scene=chat',
+    prep: async (p) => {
+      await click('Automations')(p)
+      await p.waitForTimeout(200)
+      await p.locator('.auto-row-main').first().click()
+    }
+  },
+  {
+    name: '08c-automation-new-for-chat',
+    url: '?scene=chat',
+    prep: async (p) => {
+      await p.getByRole('button', { name: 'New automation for this chat' }).click()
+      await p.waitForTimeout(200)
+      await p.locator('.auto-template').nth(1).click()
+    }
+  },
+  {
+    name: '08e-automation-run-in-chat',
+    url: '?scene=chat',
+    prep: (p) =>
+      p.evaluate(async () => {
+        const m = (window as any).__mock
+        const conv = await (window as any).jarvis.loadConversations().then((cs: any[]) => cs[0])
+        const at = Date.now()
+        const user = { id: 'au', role: 'user', createdAt: at, parts: [{ type: 'text', text: 'Check the checks on PR #482. If any failed, find out why and fix it.' }], automation: { id: 'r2', name: 'Watch CI on #482' } }
+        const asst = { id: 'aa', role: 'assistant', provider: 'claude', createdAt: at, parts: [] }
+        m.emit('automationRun', { phase: 'start', automationId: 'r2', runId: 'run-x', msgId: 'aa', provider: 'claude', conv: { ...conv, messages: [...conv.messages, user, asst] } })
+        await new Promise((r) => setTimeout(r, 50))
+        m.emit('event', 'run-x', { kind: 'text', delta: 'All checks on **#482** are green now — ' })
+        m.emit('event', 'run-x', { kind: 'text', delta: 'e2e passed 3 runs in a row.' })
+        await new Promise((r) => setTimeout(r, 50))
+        document.querySelector('.messages')!.scrollTop = 1e6
+      })
+  },
+  { name: '08d-automations-empty', url: '?scene=empty-auto', prep: click('Automations') },
+  {
+    name: '08f-automation-webhook',
+    url: '?scene=chat',
+    size: { width: 1440, height: 1500 },
+    prep: async (p) => {
+      await click('Automations')(p)
+      await p.waitForTimeout(200)
+      await p.locator('.auto-row-main', { hasText: 'Review new pull requests' }).click()
+    }
+  },
+  {
+    name: '08g-automation-webhook-new',
+    url: '?scene=chat',
+    size: { width: 1440, height: 1500 },
+    prep: async (p) => {
+      await click('Automations')(p)
+      await p.waitForTimeout(200)
+      await p.getByRole('button', { name: 'New automation', exact: true }).first().click()
+      await p.waitForTimeout(150)
+      await p.locator('.auto-template', { hasText: 'GitHub pull request' }).click()
+    }
+  },
+  {
+    name: '09b-settings-webhook-relay',
+    url: '?scene=chat',
+    size: { width: 1440, height: 1100 },
+    prep: async (p) => {
+      await click('Settings')(p)
+      await p.waitForTimeout(150)
+      await p.locator('.panel').getByRole('button', { name: /tools/i }).first().click()
+      await p.waitForTimeout(100)
+      await p.locator('.relay-status').evaluate((el) => el.scrollIntoView({ block: 'end' }))
+    }
+  },
   { name: '09-settings', url: '?scene=chat', prep: click('Settings') },
   {
     name: '10-settings-connections',
@@ -96,7 +167,7 @@ for (const s of scenes) {
   }
   await page.waitForTimeout(500)
   if (process.env.EVAL) console.log(await page.evaluate(process.env.EVAL))
-  await page.evaluate(s.size ? quickBackdrop : trafficLights)
+  await page.evaluate(s.url.includes('#quick') ? quickBackdrop : trafficLights)
   await page.waitForTimeout(50)
   await page.screenshot({ path: resolve(out, `${s.name}.png`) })
   console.log(`${s.name}${errors.length ? `  !! ${errors.join(' | ')}` : ''}`)

@@ -1,18 +1,18 @@
-// Menu-bar icon: quick ask, voice, routines, wake-word toggle, updates.
+// Menu-bar icon: quick ask, voice, automations, wake-word toggle, updates.
 import { Menu, nativeImage, Tray, type MenuItemConstructorOptions } from 'electron'
-import type { Routine, Settings, UpdateState } from '@shared/types'
+import type { Automation, PanelId, Settings, UpdateState } from '@shared/types'
 import { resourcePath } from './voice'
 
 export interface TrayDeps {
   settings(): Promise<Settings>
-  routines(): Promise<Routine[]>
+  automations(): Promise<Automation[]>
   update(): UpdateState
   openMain(): void
   openQuick(voice: boolean): void
   live(): boolean
   toggleLive(): void
-  openPanel(panel: 'settings' | 'routines' | 'projects' | 'onboarding'): void
-  runRoutine(id: string): void
+  openPanel(panel: PanelId): void
+  runAutomation(id: string): void
   setWakeWord(on: boolean): void
   installUpdate(): void
   quit(): void
@@ -38,7 +38,7 @@ function icon(active: boolean) {
 
 export async function refreshTray() {
   if (!tray) return
-  const [s, routines] = await Promise.all([deps.settings(), deps.routines()])
+  const [s, automations] = await Promise.all([deps.settings(), deps.automations()])
   const u = deps.update()
   const items: MenuItemConstructorOptions[] = [
     { label: `Ask Jarvis…    ${pretty(s.quickHotkey)}`, click: () => deps.openQuick(false) },
@@ -50,14 +50,14 @@ export async function refreshTray() {
     { label: `Open Jarvis    ${pretty(s.hotkey)}`, click: () => deps.openMain() },
     { type: 'separator' },
     {
-      label: 'Routines',
+      label: 'Automations',
       submenu: [
-        ...routines.map<MenuItemConstructorOptions>((r) => ({
-          label: `Run “${r.name}” now`,
-          click: () => deps.runRoutine(r.id)
+        ...automations.slice(0, 15).map<MenuItemConstructorOptions>((a) => ({
+          label: `Run “${a.name}” now`,
+          click: () => deps.runAutomation(a.id)
         })),
-        ...(routines.length ? [{ type: 'separator' } as const] : []),
-        { label: 'Manage routines…', click: () => deps.openPanel('routines') }
+        ...(automations.length ? [{ type: 'separator' } as const] : []),
+        { label: 'Manage automations…', click: () => deps.openPanel('automations') }
       ]
     },
     {

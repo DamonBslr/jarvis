@@ -11,7 +11,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p relay/tsconfig.json",
     "dist": "electron-vite build && electron-builder --mac --publish never",
     "release": "electron-vite build && electron-builder --mac --publish always",
     "icons": "bash scripts/icons.sh",

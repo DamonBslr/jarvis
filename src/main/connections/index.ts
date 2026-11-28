@@ -25,7 +25,7 @@ import * as store from './store'
  *
  * Policy, enforced here for every engine:
  *  - read:  only tools the server marks read-only (readOnlyHint) are listed or callable
- *  - ask:   other tools need an approval popup each time (denied in unattended routines)
+ *  - ask:   other tools need an approval popup each time (denied in unattended automations)
  *  - auto:  other tools run on their own
  * "Ask" (read-only) runs only ever see read-only tools.
  */

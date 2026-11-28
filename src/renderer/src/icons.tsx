@@ -224,3 +224,41 @@ export function ToolIcon({ name, size = 14 }: { name: string; size?: number }) {
   if (n.includes('memory') || n.includes('remember')) return <IconBrain size={size} />
   return <IconSparkle size={size} />
 }
+export const IconChat = (p: P) => (
+  <Svg {...p}>
+    <path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.1A8 8 0 1 1 20 12Z" />
+  </Svg>
+)
+export const IconInbox = (p: P) => (
+  <Svg {...p}>
+    <path d="M4 13h4l1.5 3h5L16 13h4" />
+    <path d="M5.5 5h13L21 13v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-5Z" />
+  </Svg>
+)
+export const IconPlay = (p: P) => (
+  <Svg {...p}>
+    <path d="M7 5v14l11-7Z" />
+  </Svg>
+)
+export const IconRepeat = (p: P) => (
+  <Svg {...p}>
+    <path d="M17 2l3 3-3 3" />
+    <path d="M4 11V9a4 4 0 0 1 4-4h12" />
+    <path d="M7 22l-3-3 3-3" />
+    <path d="M20 13v2a4 4 0 0 1-4 4H4" />
+  </Svg>
+)
+export const IconClockPlus = (p: P) => (
+  <Svg {...p}>
+    <path d="M20.9 13.2A9 9 0 1 0 12.8 21" />
+    <path d="M12 7v5l2.5 1.5" />
+    <path d="M18 16v6M15 19h6" />
+  </Svg>
+)
+export const IconWebhook = (p: P) => (
+  <Svg {...p}>
+    <path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2" />
+    <path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06" />
+    <path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8" />
+  </Svg>
+)

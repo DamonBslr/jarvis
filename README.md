@@ -17,7 +17,7 @@ Local desktop agent. Electron + React shell that drives the AI CLIs you already 
   - [Ollama](https://ollama.com) for local models: `ollama pull gemma3` (chat) and `ollama pull embeddinggemma` (memory search; optional).
 - **Optional, per feature:**
   - `gh` (`gh auth login`) for the Git workbench, PR status and GitHub activity.
-  - A Linear personal API key for the Linear workbench and routines.
+  - A Linear personal API key for the Linear workbench and automations.
   - `uv` for the natural voices (Kokoro, Piper), plus Xcode command line tools and `cmake` or `uv` to build whisper.cpp. `brew install whisper-cpp` works too.
 
 Jarvis reads your login shell's `PATH`, so anything you can run in Terminal is found.
@@ -94,6 +94,7 @@ Every Claude Code / Codex run gets a built-in `jarvis` MCP server (`src/main/mcp
 | `linear_my_issues`, `linear_get_issue` | Read Linear issues (allowed without a prompt) |
 | `linear_set_state`, `linear_comment` | Update Linear issues (asks first in Edit mode) |
 | `connections_list`, `connect_service` | See connected services; set up a new one with you (popup, sign-in or key entry; see Connections) |
+| `automation_schedule`, `automation_list`, `automation_run_now`, `automation_delete` | Schedule prompts that run later in this chat, in a chat of their own, or in a new chat per run (see Automations) |
 
 Codex gets the memory and Linear tools through `-c mcp_servers.jarvis.*`. `codex exec` can't stop to ask for approval, so its safety comes from its sandbox.
 
@@ -115,7 +116,7 @@ Example: add `https://jobs.example.com/mcp`. Jarvis finds its auth server (say `
 **Policy** (per connection, enforced in the main process for Claude and Codex alike):
 
 - *Read only*: agents see only tools the server marks `readOnlyHint`.
-- *Ask before changes* (default): every other tool call opens an approval popup. Unattended routines can't make changes.
+- *Ask before changes* (default): every other tool call opens an approval popup. Unattended automations can't make changes.
 - *Act on its own*: other tools run without asking.
 
 "Ask" (read-only) chats always get only the read-only tools. Every call is logged to `connections-audit.jsonl`; Settings → Connections → *Recent agent activity* shows the log.
@@ -188,14 +189,80 @@ When the Jev server is offline, Jarvis uses keyword heuristics instead. The URL 
 - **Language**: Settings → General → *Language* (English or Deutsch, default English). It pins three things: the language agents answer in (an instruction on every turn, so they never switch because of an accent, a transcript or German context; you can still ask for another language in chat), the whisper language (no auto-detect), and the reply voice. Kokoro has no German, so German uses [Piper](https://github.com/OHF-Voice/piper1-gpl): Settings → Voice → *Natural German voice* downloads the picked voice (*Thorsten*, 114 MB, default; or *Thorsten* light / *Kerstin*) into `~/Library/Application Support/Jarvis/piper`, run by `resources/piper-worker.py` the same way as Kokoro.
 - **Wake word** (off by default): Settings → Voice → *Listen for "Jarvis"*, or the menu-bar toggle. An energy VAD cuts speech into ≤6 s clips; each is transcribed locally and only acted on if it starts with "Jarvis…" / "Hey Jarvis…". "Jarvis, what's on my board?" runs immediately; "Jarvis" alone opens the bar listening. Paused while Jarvis is speaking or the bar is open. Audio is never stored or uploaded; macOS shows the mic indicator while it's on.
 
-## Routines
+## Automations
 
-Scheduled prompts with fresh data, answered into a new chat (tagged *routine*) plus a notification (click opens it); optionally read aloud. Manage in the sidebar → Routines or the menu bar.
+Prompts Jarvis runs on a schedule or when a webhook is called, unattended, even with the window closed. Manage them in the sidebar → Automations (clock icon), from the menu bar, or from a chat.
 
-- Placeholders filled before the run: `{{linear}}` (your open issues), `{{prs}}` (your open PRs + review requests via `gh search prs`), `{{repos}}` (branch/uncommitted/unpushed for mapped repos), `{{date}}`.
-- Schedules: time of day on chosen weekdays, or every N minutes. Missed runs catch up after sleep (within 6 h — no morning briefing at 9 pm).
-- Runs are unattended and read-only: no approval tool is attached, so anything beyond reading is declined.
-- Built-in *Morning briefing* (weekdays 08:30) ships **disabled** — flip it on. Templates: PR review sweep, end-of-day wrap-up.
+**Where runs go** (per automation):
+
+| Target | What happens |
+|---|---|
+| **In a chat** | Each run continues the chat you pick (by default the one you created it from), with that chat's engine, model, workspace and agent session. The turn shows up marked with the automation's name. |
+| **In its own chat** | The first run creates a chat named after the automation; every later run lands there too. |
+| **New chat each run** | Every run starts clean in a new chat. |
+
+*Fresh session each run* (chat targets): the chat still collects every run, but the agent starts without the earlier conversation.
+
+**Creating one**
+
+- From a chat: the clock-plus button in the chat header opens a new automation bound to that chat. A chip in the header shows the automations posting there.
+- By asking: "every weekday at 9, check my PRs", "in two hours, remind me to deploy". Agents get Jarvis's `automation_schedule`, `automation_list`, `automation_run_now` and `automation_delete` tools (Claude Code and Codex). Runs post into the asking chat unless the agent picks `dedicated` or `new`. An agent can't give an automation more access than its own chat has, and unattended runs don't get these tools, so automations can't schedule more automations.
+- In Automations → *New automation*, from a template (Morning briefing, PR review sweep, End-of-day wrap-up) or blank.
+
+**Details**
+
+- Schedules: a time of day on chosen weekdays, repeating every N minutes or hours, or once at a date and time (a one-off switches itself off after running). A missed daily slot catches up after sleep within 6 h, so no morning briefing at 9 pm.
+- Placeholders filled before each run: `{{linear}}` (your open issues), `{{prs}}` (your open PRs + review requests via `gh search prs`), `{{repos}}` (branch/uncommitted/unpushed for mapped repos), `{{date}}`.
+- Access: *Read-only* (default), *Edit files*, or *Full access*. Nobody is there to approve, so anything that would need an approval popup is declined.
+- If a run is due while its chat is busy with another run, the scheduler waits for the chat; *Run now* waits up to 15 minutes. If an automation's chat is deleted, the automation pauses and explains why.
+- If the chat is open, you watch the run stream in it and can stop it like any other run. Each automation keeps its last 30 runs (status, duration, chat) in its detail view. A notification (click opens the chat) and reading the result aloud are optional.
+- Stored in `automations.json` in the app's data folder (`routines.json` from older versions is migrated). The built-in *Morning briefing* ships switched off.
+
+### Webhook triggers
+
+An automation can run when an HTTP request reaches its URL instead of on a clock (*When* → *Webhook*, the *GitHub pull request* template, or ask an agent: `automation_schedule` with `schedule: {type: "webhook", …}` replies with the `webhookUrl`). Where runs go, fresh sessions, engine and access work as for scheduled automations.
+
+Jarvis is a desktop app behind NAT, so a small **relay** you deploy takes the requests (see [Deploying the relay](#deploying-the-relay)), and Jarvis keeps an outbound connection to it:
+
+```
+sender ──POST /hooks/<id>/<token>──▶ relay ──server-sent events──▶ Jarvis (outbound)
+                                       ◀──── ack ─────────────────
+```
+
+- **URL + token.** Each webhook automation gets `https://<relay>/hooks/<automation-id>/<token>`. Jarvis registers the enabled ones with the relay as id + SHA-256 of the token, so unknown hooks, wrong tokens and paused automations get a 404 and are never stored. *Regenerate* makes a new token; the old URL stops working. `GET` on the URL answers 200 when it is live.
+- **Filters** (up to 16, all must match): `path` such as `headers.x-github-event`, `body.action` or `query.env`; a `[]` segment matches any array item (`body.labels[].name`). Ops: `equals`, `notEquals` (passes only if no item equals), `startsWith`, `in` (list), `exists`. Values compare as strings; objects only pass `exists`.
+- **Signature** (optional): HMAC (SHA-256 by default, also SHA-1/512) over the raw body, compared in constant time against a header, e.g. GitHub's `x-hub-signature-256` with prefix `sha256=` and hex encoding. Without it, the URL token alone authenticates. The secret is kept in the macOS keychain, never in `automations.json`.
+- **Dedupe**: `replayKey` (a template such as `{{headers.x-github-delivery}}`; a request whose key was seen in the last 7 days is dropped) and `coalesceKey` (e.g. `{{body.pull_request.number}}`): the first request for a key runs at once; more with the same key inside the window (10–3600 s, default 120) share one follow-up run with the latest payload. A key whose path is missing never dedupes.
+- **Max delivery age**: the relay queues requests while the Mac sleeps or Jarvis is closed; `maxDeliveryAgeMinutes` skips ones it held longer than that.
+- **Untrusted input.** The request (method, query, headers minus credentials, body; cut at 24 KB) goes into the run's prompt as a fenced JSON block inside `<webhook_request>` and labeled untrusted, at `{{payload}}` or after the prompt. The agent is told never to follow instructions in it. The chat shows a one-line stand-in. Anyone with the URL can start a run with text of their choosing, so keep these *Read-only* unless you sign requests and trust the sender.
+- **History**: runs show as *webhook* in the run list; rejected requests (bad signature, too old) show as skipped, and the editor shows what happened to the last request (filtered, duplicate, coalesced…).
+- **Settings → Tools → Webhook relay**: the relay URL, its shared secret (*Generate* makes one and shows it once) and the connection state. The client reconnects with backoff and after sleep.
+
+### Deploying the relay
+
+`relay/` is a zero-dependency Node server (`server.ts`, runs on Node ≥ 23.6 with type stripping) with a Dockerfile. It needs HTTPS in front (any reverse proxy) and one env var:
+
+| Env | Default | |
+|---|---|---|
+| `RELAY_SECRET` | (required) | Shared with Jarvis, ≥ 24 chars (`openssl rand -base64 32`, or *Generate* in Settings) |
+| `PORT` | `8080` | |
+| `DATA_DIR` | `/data` | Hook registrations + queued deliveries; mount a volume |
+| `TRUST_PROXY` | `1` in Docker | Take the client IP for rate limiting from `X-Forwarded-For` (set `0` when exposed directly) |
+| `MAX_BODY_BYTES` | `1048576` | Larger requests get 413 |
+| `QUEUE_MAX_ITEMS` / `QUEUE_MAX_PER_HOOK` / `QUEUE_MAX_BYTES` | `1000` / `200` / 64 MB | Full queue answers 503 + `Retry-After` |
+| `QUEUE_TTL_HOURS` | `72` | Undelivered requests expire |
+| `RATE_LIMIT_PER_MIN` | `120` | Per client IP on `/hooks/*` (429 above) |
+
+```bash
+docker build -t jarvis-relay relay/
+docker run -d -p 8080:8080 -v jarvis-relay:/data -e RELAY_SECRET=… jarvis-relay
+# or without Docker:
+RELAY_SECRET=… DATA_DIR=./data node relay/server.ts
+```
+
+On **Coolify**: new application from this Git repository, build pack *Dockerfile*, base directory `/relay`, port 8080, your domain (e.g. `https://relay.example.com`) with a DNS A record pointing at the server, a persistent volume at `/data`, and `RELAY_SECRET` as a secret env var. Then in Jarvis: Settings → Tools → Webhook relay → URL `https://relay.example.com` and the same secret; the status turns *Connected*.
+
+The relay only sees requests for registered hooks, keeps them until Jarvis acks, and logs ids and sizes only (never payloads, tokens or URLs). One Jarvis connects at a time; a newer connection replaces the older one. Endpoints: `POST|PUT|PATCH|GET /hooks/<id>/<token>`, `GET /healthz`, and for Jarvis (`Authorization: Bearer <secret>`) `PUT /client/hooks`, `GET /client/events`, `POST /client/ack`, `GET /client/status`.
 
 ## Packaging + auto-update
 
@@ -210,6 +277,10 @@ JARVIS_DB_DIR=$(mktemp -d) npx tsx scripts/memory-test.mts          # memory, RA
 JARVIS_DB_DIR=$(mktemp -d) npx tsx scripts/memory-test.mts --learn  # + real learner call
 bun scripts/smoke.ts codex "prompt"                                  # provider adapters
 npx tsx scripts/integrations-test.mts                                 # git parser + Linear auth errors
+npx tsx scripts/automations-test.mts                                  # automation schedule math
+npx tsx scripts/webhooks-test.mts                                     # webhook filters, signatures, replay/coalesce, prompt block
+pnpm build && node scripts/automations-e2e.mts                        # automations in Electron with real Claude Code (haiku)
+pnpm build && node scripts/webhooks-e2e.mts                           # local relay + relay client + a real webhook-triggered run
 JARVIS_DB_DIR=$(mktemp -d) npx tsx scripts/knowledge-test.mts [--github] [--brief]  # discovery, sync, loops, recall on this Mac's data
 ```
 
@@ -221,7 +292,8 @@ src/main/            Electron main: IPC + boot (index.ts)
   windows.ts         main window + floating quick bar
   tray.ts            menu-bar icon and menu
   voice.ts           whisper.cpp transcription, model download/install, Kokoro (English) + Piper (German) voices + macOS speech
-  routines.ts        scheduler + data gatherers for scheduled prompts
+  automations.ts     scheduler, runs into chats, data gatherers, automation_* agent tools
+  webhooks.ts        relay client (register hooks, SSE, acks), webhook run queue; webhookCore.ts: signature/filter/dedupe decisions
   updater.ts         electron-updater wiring
   providers/         one adapter per engine -> normalized AgentEvent stream
   shellEnv.ts        loads PATH/env from your login shell (GUI apps don't get it)
@@ -241,6 +313,7 @@ src/renderer/src/QuickBar.tsx, voice.ts   quick bar UI; mic capture, VAD, WAV, w
 resources/           tray icons + install-whisper.sh (shipped as extraResources)
 assets/, build/      icon sources (pnpm icons) + builder resources/entitlements
 scripts/smoke.ts     headless adapter test: bun scripts/smoke.ts codex "prompt"
+relay/               public webhook relay (server.ts + Dockerfile), deployed separately
 ```
 
 ## Notes

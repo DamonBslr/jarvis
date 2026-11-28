@@ -20,7 +20,7 @@ export interface ToolContext {
   settings: Settings
   req: RunRequest
   env: NodeJS.ProcessEnv
-  /** True when a Jarvis window can answer approval prompts (false for unattended routines). */
+  /** True when a Jarvis window can answer approval prompts (false for unattended automations). */
   interactive: boolean
 }
 

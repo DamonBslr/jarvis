@@ -23,11 +23,23 @@ export async function getSecret(name: string): Promise<string | null> {
   }
 }
 
-export async function setSecret(name: string, value: string | null) {
-  if (value && !safeStorage.isEncryptionAvailable()) throw new Error('OS encryption unavailable; refusing to store secret')
-  const all = await readAll()
-  if (value) all[name] = safeStorage.encryptString(value).toString('base64')
-  else delete all[name]
-  await mkdir(app.getPath('userData'), { recursive: true })
-  await writeFile(file(), JSON.stringify(all), { mode: 0o600 })
+let writes: Promise<unknown> = Promise.resolve()
+
+/** Read-modify-write of one file: writes run one after another so concurrent saves don't drop each other. */
+export function setSecret(name: string, value: string | null): Promise<void> {
+  const job = writes.then(async () => {
+    if (value && !safeStorage.isEncryptionAvailable()) throw new Error('OS encryption unavailable; refusing to store secret')
+    const all = await readAll()
+    if (value) all[name] = safeStorage.encryptString(value).toString('base64')
+    else delete all[name]
+    await mkdir(app.getPath('userData'), { recursive: true })
+    await writeFile(file(), JSON.stringify(all), { mode: 0o600 })
+  })
+  writes = job.catch(() => {})
+  return job
+}
+
+/** Names of stored secrets starting with a prefix (values stay encrypted). */
+export async function secretNames(prefix: string): Promise<string[]> {
+  return Object.keys(await readAll()).filter((k) => k.startsWith(prefix))
 }

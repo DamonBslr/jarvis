@@ -2,7 +2,7 @@ import { isValidElement, memo, useRef, useState, type ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ChatMessage, MessagePart } from '@shared/types'
-import { IconBrain, IconCheck, IconChevronRight, IconCopy, ToolIcon } from './icons'
+import { IconBrain, IconCheck, IconChevronRight, IconClock, IconCopy, ToolIcon } from './icons'
 import { highlight } from './highlight'
 
 const PROVIDER_LABEL = { claude: 'Claude Code', codex: 'Codex', ollama: 'Ollama' } as const
@@ -154,7 +154,16 @@ export const MessageView = memo(function MessageView({
   if (message.role === 'user') {
     const text = message.parts.map((p) => (p.type === 'text' ? p.text : '')).join('')
     return (
-      <div className="msg user">
+      <div className={`msg user${message.automation ? ' from-automation' : ''}`}>
+        {message.automation && (
+          <div className="msg-automation" title="Sent by an automation">
+            <IconClock size={12} />
+            {message.automation.name}
+            <span className="msg-automation-time">
+              {new Date(message.createdAt).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </div>
+        )}
         <div className="bubble">{text}</div>
       </div>
     )

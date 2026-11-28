@@ -144,7 +144,7 @@ export function browserTools(ctx: ToolContext): ToolContribution | null {
   const userData = app.getPath('userData')
   const profile = browserProfileDir()
   const outputDir = join(userData, 'browser-output')
-  // Unattended routines stay headless: no Chrome window popping up while you work.
+  // Unattended automations stay headless: no Chrome window popping up while you work.
   const visible = ctx.settings.browserVisible && ctx.interactive
   const denied = deniedTools(ctx.req.autonomy)
 

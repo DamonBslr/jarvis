@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AgentEvent, ApprovalRequest, JarvisApi, LearnedEvent, Settings, SyncProgress, UpdateState, VoiceProgress } from '@shared/types'
+import type { AgentEvent, ApprovalRequest, AutomationRunEvent, JarvisApi, LearnedEvent, PanelId, Settings, SyncProgress, UpdateState, VoiceProgress, WebhookRelayStatus } from '@shared/types'
 
 function subscribe<T extends unknown[]>(channel: string, cb: (...args: T) => void) {
   const listener = (_: unknown, ...args: unknown[]) => cb(...(args as T))
@@ -55,7 +55,7 @@ const api: JarvisApi = {
   },
   onConversationsChanged: (cb) => subscribe<[]>('jarvis:conversations-changed', cb),
   onOpenConversation: (cb) => subscribe<[string]>('jarvis:open-conversation', cb),
-  onOpenPanel: (cb) => subscribe<['settings' | 'routines' | 'projects' | 'onboarding']>('jarvis:open-panel', cb),
+  onOpenPanel: (cb) => subscribe<[PanelId, string | undefined]>('jarvis:open-panel', cb),
   quick: {
     hide: () => ipcRenderer.invoke('quick:hide'),
     resize: (h) => ipcRenderer.invoke('quick:resize', h),
@@ -83,12 +83,21 @@ const api: JarvisApi = {
     onLive: (cb) => subscribe<[boolean]>('jarvis:live', cb),
     onLiveToggle: (cb) => subscribe<[boolean | undefined]>('jarvis:live-toggle', cb)
   },
-  routines: {
-    list: () => ipcRenderer.invoke('routines:list'),
-    save: (r) => ipcRenderer.invoke('routines:save', r),
-    remove: (id) => ipcRenderer.invoke('routines:remove', id),
-    runNow: (id) => ipcRenderer.invoke('routines:runNow', id),
-    onChanged: (cb) => subscribe<[]>('jarvis:routines-changed', cb)
+  automations: {
+    list: () => ipcRenderer.invoke('automations:list'),
+    save: (a) => ipcRenderer.invoke('automations:save', a),
+    remove: (id) => ipcRenderer.invoke('automations:remove', id),
+    runNow: (id) => ipcRenderer.invoke('automations:runNow', id),
+    onChanged: (cb) => subscribe<[]>('jarvis:automations-changed', cb),
+    onRun: (cb) => subscribe<[AutomationRunEvent]>('jarvis:automation-run', cb),
+    regenerateToken: (id) => ipcRenderer.invoke('automations:regenerateToken', id),
+    setSignatureSecret: (id, secret) => ipcRenderer.invoke('automations:setSignatureSecret', id, secret)
+  },
+  webhooks: {
+    status: () => ipcRenderer.invoke('webhooks:status'),
+    setRelaySecret: (secret) => ipcRenderer.invoke('webhooks:setRelaySecret', secret),
+    reconnect: () => ipcRenderer.invoke('webhooks:reconnect'),
+    onStatus: (cb) => subscribe<[WebhookRelayStatus]>('jarvis:webhook-status', cb)
   },
   connections: {
     list: () => ipcRenderer.invoke('connections:list'),

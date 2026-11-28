@@ -137,6 +137,8 @@ export interface ChatMessage {
   context?: ContextRef[]
   route?: RouteDecision
   learned?: LearnedEvent['added']
+  /** User turn sent by an automation rather than typed. */
+  automation?: { id: string; name: string }
 }
 
 export interface LinearState {
@@ -291,8 +293,8 @@ export interface Conversation {
   updatedAt: number
   /** Linear issue this chat is working on. */
   linear?: { id: string; identifier: string; title: string; url: string; prLinked?: string }
-  /** Set when a routine created this chat. */
-  routineId?: string
+  /** Set when an automation created this chat (new / dedicated chats). */
+  automationId?: string
   /** Started from the quick bar. */
   quick?: boolean
 }
@@ -384,6 +386,8 @@ export interface Settings {
   projectBriefs: boolean
   /** Folders that hold code repos, scanned for projects (e.g. ~/code). */
   codeRoots: string[]
+  /** Public webhook relay Jarvis connects to, e.g. https://relay.example.com ('' = webhooks off). Secret in the keychain. */
+  webhookRelayUrl: string
 }
 
 // ---- Knowledge: projects + activity from every connected source -----------------------------
@@ -505,27 +509,126 @@ export interface SyncProgress {
   progress?: number
 }
 
-export type RoutineSchedule =
+export type AutomationSchedule =
   | { kind: 'daily'; time: string; days: number[] } // time "HH:MM", days 0=Sun..6=Sat
   | { kind: 'interval'; minutes: number }
+  | { kind: 'once'; at: number } // epoch ms
+  | ({ kind: 'webhook' } & WebhookTrigger)
 
-export interface Routine {
+/** Compared as strings; a `[]` path segment matches any array item. Objects only pass `exists`. */
+export type WebhookFilter =
+  | { path: string; op: 'equals' | 'notEquals' | 'startsWith'; value: string }
+  | { path: string; op: 'in'; value: string[] }
+  | { path: string; op: 'exists' }
+
+/** HMAC over the raw body. The secret lives in the OS keychain, never in automations.json. */
+export interface WebhookSignature {
+  /** Header that carries the digest, e.g. x-hub-signature-256. */
+  header: string
+  encoding: 'hex' | 'base64'
+  /** Text before the digest, e.g. "sha256=". Empty for none. */
+  prefix: string
+  algorithm?: 'sha256' | 'sha1' | 'sha512'
+}
+
+export interface WebhookDedupe {
+  /** Template, e.g. {{headers.x-github-delivery}}: a request whose key was seen before is dropped. */
+  replayKey?: string
+  /** Template, e.g. {{body.pull_request.number}}: requests with the same key inside the window share one follow-up run. */
+  coalesceKey?: string
+  /** 10–3600, default 120. */
+  coalesceWindowSeconds?: number
+}
+
+/** Run when an HTTP request reaches the automation's webhook URL (via the relay). */
+export interface WebhookTrigger {
+  /** All must match. At most 16. */
+  filters: WebhookFilter[]
+  signature?: WebhookSignature
+  dedupe?: WebhookDedupe
+  /** Skip requests the relay held (Mac asleep or offline) for longer than this. 1–1440. */
+  maxDeliveryAgeMinutes?: number
+}
+
+/** What happened to the last request that reached a webhook automation. */
+export interface WebhookDeliveryNote {
+  at: number
+  outcome: 'queued' | 'coalesced' | 'filtered' | 'duplicate' | 'too-old' | 'bad-signature' | 'paused'
+  detail?: string
+}
+
+export interface WebhookRelayStatus {
+  /** Relay URL from Settings ('' = not set up). */
+  url: string
+  hasSecret: boolean
+  state: 'off' | 'connecting' | 'connected' | 'error'
+  error?: string
+  connectedAt?: number
+  /** Webhook automations registered with the relay. */
+  hooks: number
+  lastDeliveryAt?: number
+}
+
+/**
+ * Where an automation's runs land:
+ *  - origin:    the chat it was created in (each run continues that chat)
+ *  - dedicated: one chat of its own, created by the first run and reused by every later run
+ *  - new:       a new chat for every run
+ */
+export type AutomationThread = { kind: 'origin'; convId: string } | { kind: 'dedicated'; convId?: string } | { kind: 'new' }
+
+export interface AutomationRun {
+  at: number
+  trigger: 'schedule' | 'manual' | 'webhook'
+  status: 'ok' | 'failed' | 'skipped'
+  convId?: string
+  durationMs?: number
+  /** Failure reason, or why the run was skipped. */
+  detail?: string
+}
+
+export interface Automation {
   id: string
   name: string
-  /** Prompt; {{linear}}, {{prs}}, {{repos}}, {{date}} are filled with fresh data before the run. */
+  /**
+   * Prompt; {{linear}}, {{prs}}, {{repos}}, {{date}} are filled with fresh data before the run. Webhook runs put
+   * the request at {{payload}} (or append it) as a fenced, clearly untrusted data block.
+   */
   prompt: string
-  schedule: RoutineSchedule
+  schedule: AutomationSchedule
+  thread: AutomationThread
+  /** origin / dedicated: start every run with a fresh agent session (the chat still collects the runs). */
+  freshSession?: boolean
+  /** Engine, model and workspace for new / dedicated chats; origin runs use the chat's own. */
   provider: ProviderId
   model?: string
   cwd: string
+  autonomy: RunRequest['autonomy']
   enabled: boolean
   notify: boolean
   speak: boolean
+  createdAt?: number
+  /** 'agent' when an agent scheduled it from a chat (automation_schedule tool). */
+  createdBy?: 'user' | 'agent'
   lastRunAt?: number
   lastConvId?: string
   lastError?: string
   /** When the schedule was last saved; a daily slot earlier than this never fires retroactively. */
   armedAt?: number
+  /** Newest first, capped. */
+  history?: AutomationRun[]
+}
+
+/** What the UI gets: the stored automation plus live state computed in main. */
+export interface AutomationView extends Automation {
+  running?: boolean
+  /** Waiting for its chat to finish another run. */
+  waiting?: boolean
+  nextRunAt?: number
+  /** Title of the chat runs land in (origin / dedicated), when it exists. */
+  threadTitle?: string
+  /** Webhook automations: the public URL (once a relay is set up) and the last request. */
+  webhook?: { url?: string; hasSecret: boolean; lastDelivery?: WebhookDeliveryNote; pending: number }
 }
 
 export interface VoiceStatus {
@@ -555,6 +658,13 @@ export interface UpdateState {
   progress?: number
   error?: string
 }
+
+export type PanelId = 'settings' | 'automations' | 'projects' | 'onboarding'
+
+/** Broadcast when an automation run starts (with the chat as saved, incl. the new turn) or ends. */
+export type AutomationRunEvent =
+  | { phase: 'start'; automationId: string; runId: string; msgId: string; provider: ProviderId; conv: Conversation }
+  | { phase: 'end'; automationId: string; runId: string; convId: string }
 
 export interface JarvisApi {
   providers(): Promise<ProviderStatus[]>
@@ -601,10 +711,10 @@ export interface JarvisApi {
     status(): Promise<MemoryStatus>
     onSourcesChanged(cb: () => void): () => void
   }
-  /** Conversations written by another window or a routine. */
+  /** Conversations written by another window or an automation. */
   onConversationsChanged(cb: () => void): () => void
   onOpenConversation(cb: (convId: string) => void): () => void
-  onOpenPanel(cb: (panel: 'settings' | 'routines' | 'projects' | 'onboarding') => void): () => void
+  onOpenPanel(cb: (panel: PanelId, arg?: string) => void): () => void
   quick: {
     hide(): Promise<void>
     resize(height: number): Promise<void>
@@ -647,12 +757,25 @@ export interface JarvisApi {
     /** Hotkey / tray / "Jarvis, live mode" asked the main window to start or end live mode. */
     onLiveToggle(cb: (start?: boolean) => void): () => void
   }
-  routines: {
-    list(): Promise<(Routine & { running?: boolean })[]>
-    save(r: Routine): Promise<void>
+  automations: {
+    list(): Promise<AutomationView[]>
+    save(a: Automation): Promise<void>
     remove(id: string): Promise<void>
     runNow(id: string): Promise<void>
     onChanged(cb: () => void): () => void
+    /** An automation started or finished a run in a chat: stream it live if that chat is open. */
+    onRun(cb: (ev: AutomationRunEvent) => void): () => void
+    /** New URL token for a webhook automation; the old URL stops working. */
+    regenerateToken(id: string): Promise<void>
+    /** HMAC secret for a webhook automation's signature check (null removes it). */
+    setSignatureSecret(id: string, secret: string | null): Promise<void>
+  }
+  webhooks: {
+    status(): Promise<WebhookRelayStatus>
+    /** Shared secret Jarvis uses to connect to the relay (null removes it). */
+    setRelaySecret(secret: string | null): Promise<void>
+    reconnect(): Promise<void>
+    onStatus(cb: (s: WebhookRelayStatus) => void): () => void
   }
   connections: {
     list(): Promise<ConnectionStatus[]>

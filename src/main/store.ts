@@ -45,7 +45,8 @@ export const DEFAULT_SETTINGS: Settings = {
   syncSources: {},
   syncIntervalMin: 20,
   projectBriefs: true,
-  codeRoots: []
+  codeRoots: [],
+  webhookRelayUrl: ''
 }
 
 async function atomicWrite(path: string, data: string) {
@@ -60,12 +61,28 @@ export async function loadConversations(): Promise<Conversation[]> {
   const out: Conversation[] = []
   for (const f of files) {
     try {
-      out.push(JSON.parse(await readFile(join(dir(), f), 'utf8')))
+      out.push(normalize(JSON.parse(await readFile(join(dir(), f), 'utf8'))))
     } catch {
       /* skip corrupt file */
     }
   }
   return out.sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+/** Older builds called automations "routines". */
+function normalize(c: Conversation & { routineId?: string }): Conversation {
+  if (c.routineId && !c.automationId) c.automationId = c.routineId
+  delete c.routineId
+  return c
+}
+
+export async function loadConversation(id: string): Promise<Conversation | null> {
+  if (!SAFE_ID.test(id)) return null
+  try {
+    return normalize(JSON.parse(await readFile(join(dir(), `${id}.json`), 'utf8')))
+  } catch {
+    return null
+  }
 }
 
 export async function saveConversation(c: Conversation) {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ApprovalDecision,
+  AutomationView,
   ApprovalRequest,
   LinearIssue,
   LiveAddressing,
@@ -17,7 +18,7 @@ import { SettingsPanel } from './SettingsPanel'
 import { MemoryPanel } from './MemoryPanel'
 import { ApprovalDialog } from './ApprovalDialog'
 import { Workbench } from './Workbench'
-import { RoutinesPanel } from './RoutinesPanel'
+import { AutomationsPanel, describeSchedule, type AutomationIntent, type ChatRef } from './AutomationsPanel'
 import { ProjectsPanel } from './ProjectsPanel'
 import { Onboarding } from './Onboarding'
 import { HomeDigest } from './HomeDigest'
@@ -25,7 +26,7 @@ import { applyEvent, historyFor, uid } from '@shared/chat'
 import { Mic, recordUtterance, type Utterance } from './voice'
 import { LiveLoop, type LivePhase } from './live'
 import { Speaker } from './speaker'
-import { IconArrowUp, IconBrain, IconClock, IconCompose, IconFolder, IconLayers, IconPanelRight, IconSettings, IconStop, IconX, IconTicket, IconChevronDown, IconStars } from './icons'
+import { IconArrowUp, IconBrain, IconClock, IconClockPlus, IconCompose, IconFolder, IconLayers, IconPanelRight, IconSettings, IconStop, IconX, IconTicket, IconChevronDown, IconStars } from './icons'
 
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
 
@@ -54,6 +55,16 @@ function ticketPrompt(issue: LinearIssue): string {
     `5. When it works, push and open a PR with gh whose body links ${issue.url}. Print the PR URL.`
   ].join('\n')
 }
+
+const chatRef = (c: Conversation): ChatRef => ({
+  id: c.id,
+  title: c.title,
+  updatedAt: c.updatedAt,
+  provider: c.provider,
+  model: c.model,
+  cwd: c.cwd,
+  autonomy: c.autonomy
+})
 
 const api = window.jarvis
 const PROVIDER_LABEL: Record<ProviderId, string> = { claude: 'Claude Code', codex: 'Codex', ollama: 'Ollama' }
@@ -130,6 +141,8 @@ interface ActiveRun {
   convId: string
   msgId: string
   provider: ProviderId
+  /** Started by an automation in main: shown live here, saved by main. */
+  remote?: boolean
 }
 
 export function App() {
@@ -142,13 +155,19 @@ export function App() {
   const [draft, setDraft] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [showMemory, setShowMemory] = useState(false)
-  const [showRoutines, setShowRoutines] = useState(false)
+  const [showAutomations, setShowAutomations] = useState(false)
+  const [automationIntent, setAutomationIntent] = useState<AutomationIntent | null>(null)
+  const [automations, setAutomations] = useState<AutomationView[]>([])
   const [showProjects, setShowProjects] = useState(false)
-  // Projects, Memory and Routines are pages over the main column; one at a time, the sidebar stays usable.
-  const openPage = (page: 'projects' | 'memory' | 'routines' | null) => {
+  // Projects, Memory and Automations are pages over the main column; one at a time, the sidebar stays usable.
+  const openPage = (page: 'projects' | 'memory' | 'automations' | null) => {
     setShowProjects(page === 'projects')
     setShowMemory(page === 'memory')
-    setShowRoutines(page === 'routines')
+    setShowAutomations(page === 'automations')
+  }
+  const openAutomations = (intent?: AutomationIntent) => {
+    setAutomationIntent(intent ?? null)
+    openPage('automations')
   }
   const [onboarding, setOnboarding] = useState(false)
   const [showWorkbench, setShowWorkbench] = useState(() => {
@@ -195,7 +214,7 @@ export function App() {
     window.jarvisFocus(() => inputRef.current?.focus())
   }, [refreshProviders])
 
-  // Another window (quick bar) or a routine wrote conversations: merge, never clobbering a chat running here.
+  // Another window (quick bar) or an automation wrote conversations: merge, never clobbering a chat running here.
   const runsRef = useRef(runs)
   runsRef.current = runs
   const convsRef = useRef(convs)
@@ -226,9 +245,9 @@ export function App() {
       api.onOpenConversation((id) => {
         void reloadConversations().then(() => setActiveId(id))
       }),
-      api.onOpenPanel((panel) =>
-        panel === 'routines'
-          ? openPage('routines')
+      api.onOpenPanel((panel, arg) =>
+        panel === 'automations'
+          ? openAutomations(arg ? { kind: 'edit', id: arg } : undefined)
           : panel === 'projects'
             ? openPage('projects')
             : panel === 'onboarding'
@@ -267,15 +286,17 @@ export function App() {
       const run = runsByRunId.current.get(runId)
       if (!run) return
       const finalEvent = ev.kind === 'done'
+      // Automation runs are saved by main; here they only stream, and the saved copy wins afterwards.
+      const remote = !!run.remote
       updateConv(
         run.convId,
         (c) => ({
           ...c,
-          updatedAt: Date.now(),
-          sessions: ev.kind === 'session' ? { ...c.sessions, [run.provider]: ev.sessionId } : c.sessions,
+          updatedAt: remote ? c.updatedAt : Date.now(),
+          sessions: ev.kind === 'session' && !remote ? { ...c.sessions, [run.provider]: ev.sessionId } : c.sessions,
           messages: c.messages.map((m) => (m.id === run.msgId ? applyEvent(m, ev) : m))
         }),
-        finalEvent || ev.kind === 'session'
+        !remote && (finalEvent || ev.kind === 'session')
       )
       if (finalEvent) {
         setGitTick((t) => t + 1)
@@ -288,6 +309,41 @@ export function App() {
       }
     })
   }, [updateConv])
+
+  // An automation started a run in a chat: show it streaming like a run started here.
+  useEffect(() => {
+    const clear = (runId: string, convId: string) => {
+      if (!runsByRunId.current.has(runId)) return
+      runsByRunId.current.delete(runId)
+      const next = { ...runsRef.current }
+      delete next[convId]
+      runsRef.current = next
+      setRuns((r) => {
+        if (r[convId]?.runId !== runId) return r
+        const n = { ...r }
+        delete n[convId]
+        return n
+      })
+    }
+    return api.automations.onRun((ev) => {
+      if (ev.phase === 'end') return clear(ev.runId, ev.convId)
+      const run: ActiveRun = { runId: ev.runId, convId: ev.conv.id, msgId: ev.msgId, provider: ev.provider, remote: true }
+      runsByRunId.current.set(ev.runId, run)
+      // Set the ref now: a reload already in flight must keep this copy.
+      runsRef.current = { ...runsRef.current, [run.convId]: run }
+      setRuns((r) => ({ ...r, [run.convId]: run }))
+      setConvs((prev) =>
+        prev.some((c) => c.id === ev.conv.id) ? prev.map((c) => (c.id === ev.conv.id ? ev.conv : c)) : [ev.conv, ...prev]
+      )
+    })
+  }, [])
+
+  // Automations, for the chat header chip and sidebar marks.
+  useEffect(() => {
+    const load = () => void api.automations.list().then(setAutomations).catch(() => {})
+    load()
+    return api.automations.onChanged(load)
+  }, [])
 
   // Approval popups from the agent (Claude permission prompts via the Jarvis MCP bridge).
   useEffect(() => {
@@ -676,7 +732,7 @@ export function App() {
   }, [wbVisible, isEmpty])
 
   // Global keys
-  const panelOpen = showSettings || showMemory || showRoutines || showProjects
+  const panelOpen = showSettings || showMemory || showAutomations || showProjects
   const approvalOpen = approvals.length > 0
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -693,7 +749,7 @@ export function App() {
         // Esc closes the open panel before it stops anything running.
         setShowSettings(false)
         setShowMemory(false)
-        setShowRoutines(false)
+        setShowAutomations(false)
         setShowProjects(false)
       } else if (e.key === 'Escape' && liveRef.current) {
         // First Esc stops the answer, the next ends live mode.
@@ -737,6 +793,15 @@ export function App() {
   }
 
   const currentMode = modes.find((m) => m.id === active?.modeId)
+  const chatRefs = useMemo(() => convs.filter((c) => c.messages.length > 0).map(chatRef), [convs])
+  const boundIds = useMemo(
+    () => new Set(automations.flatMap((a) => (a.thread.kind !== 'new' && a.thread.convId ? [a.thread.convId] : []))),
+    [automations]
+  )
+  const activeAutomations = active
+    ? automations.filter((a) => a.thread.kind !== 'new' && a.thread.convId === active.id)
+    : []
+  const clearAutomationIntent = useCallback(() => setAutomationIntent(null), [])
   const modelOptions = useMemo(
     () => (active ? (providerStatus(active.provider)?.models ?? []) : []),
     [active, providers]
@@ -755,7 +820,7 @@ export function App() {
     )
 
   return (
-    <div className={`app ${wbVisible ? 'with-wb' : ''} ${showProjects || showMemory || showRoutines ? 'page-open' : ''}`}>
+    <div className={`app ${wbVisible ? 'with-wb' : ''} ${showProjects || showMemory || showAutomations ? 'page-open' : ''}`}>
       <aside className="sidebar">
         <div className="sidebar-top drag">
           <div className="brand">
@@ -783,8 +848,12 @@ export function App() {
                 >
                   <span className={`dot ${runs[c.id] ? 'running' : ''}`} data-provider={c.provider} />
                   <span className="conv-title">{c.title}</span>
-                  {c.routineId && <span className="conv-tag" title="Created by a routine">routine</span>}
-                  {c.quick && !c.routineId && <span className="conv-tag" title="Started from the quick bar">quick</span>}
+                  {(c.automationId || boundIds.has(c.id)) && (
+                    <span className="conv-auto" title={c.automationId ? 'Chat of an automation' : 'An automation posts here'}>
+                      <IconClock size={12} />
+                    </span>
+                  )}
+                  {c.quick && !c.automationId && <span className="conv-tag" title="Started from the quick bar">quick</span>}
                   <button
                     className="conv-del"
                     title="Delete"
@@ -820,10 +889,10 @@ export function App() {
               <IconBrain size={16} />
             </button>
             <button
-              className={`nav-item icon-only ${showRoutines ? 'active' : ''}`}
-              onClick={() => openPage('routines')}
-              title="Routines"
-              aria-label="Routines"
+              className={`nav-item icon-only ${showAutomations ? 'active' : ''}`}
+              onClick={() => openAutomations()}
+              title="Automations"
+              aria-label="Automations"
             >
               <IconClock size={16} />
             </button>
@@ -919,6 +988,28 @@ export function App() {
             <div />
           )}
           <div className="topbar-right no-drag">
+            {active && activeAutomations.length > 0 && (
+              <button
+                className="ticket-chip auto-chip"
+                onClick={() =>
+                  openAutomations(activeAutomations.length === 1 ? { kind: 'edit', id: activeAutomations[0].id } : undefined)
+                }
+                title={activeAutomations.map((a) => `${a.name} · ${describeSchedule(a.schedule)}${a.enabled ? '' : ' (paused)'}`).join('\n')}
+              >
+                <IconClock size={13} />
+                {activeAutomations.length === 1 ? activeAutomations[0].name : `${activeAutomations.length} automations`}
+              </button>
+            )}
+            {active && active.messages.length > 0 && (
+              <button
+                className="icon-btn"
+                onClick={() => openAutomations({ kind: 'new', chat: chatRef(active) })}
+                title="Automate: run a prompt in this chat on a schedule"
+                aria-label="New automation for this chat"
+              >
+                <IconClockPlus size={17} />
+              </button>
+            )}
             {active?.linear && (
               <button className="ticket-chip" onClick={() => api.openExternal(active.linear!.url)} title={active.linear.title}>
                 <IconTicket size={13} />
@@ -1109,13 +1200,16 @@ export function App() {
         <ProjectsPanel settings={settings} onClose={() => setShowProjects(false)} onAsk={(p, cwd) => void askAbout(p, cwd)} />
       )}
 
-      {showRoutines && (
-        <RoutinesPanel
+      {showAutomations && (
+        <AutomationsPanel
           settings={settings}
           providers={providers}
-          onClose={() => setShowRoutines(false)}
+          chats={chatRefs}
+          intent={automationIntent}
+          onIntentDone={clearAutomationIntent}
+          onClose={() => setShowAutomations(false)}
           onOpen={(id) => {
-            setShowRoutines(false)
+            setShowAutomations(false)
             void reloadConversations().then(() => setActiveId(id))
           }}
         />
